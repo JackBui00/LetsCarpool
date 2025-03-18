@@ -98,7 +98,7 @@ public partial class YourDbContextName : DbContext
             entity.Property(e => e.CreatedAt)
                 .HasDefaultValueSql("(getdate())")
                 .HasColumnType("datetime");
-            entity.Property(e => e.LocationType).HasMaxLength(50);
+            entity.Property(e => e.LocationName).HasMaxLength(50);
             entity.Property(e => e.UpdatedAt)
                 .HasDefaultValueSql("(getdate())")
                 .HasColumnType("datetime");
@@ -208,7 +208,7 @@ public partial class YourDbContextName : DbContext
 
             entity.HasIndex(e => e.Email, "UQ_Users_Email").IsUnique();
 
-            entity.HasIndex(e => e.Email, "UQ__Users__A9D105340CC63DBE").IsUnique();
+            entity.HasIndex(e => e.Email, "UQ__Users__A9D105344BA86A33").IsUnique();
 
             entity.Property(e => e.Address).HasMaxLength(255);
             entity.Property(e => e.CreatedAt)

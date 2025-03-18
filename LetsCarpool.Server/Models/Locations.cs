@@ -15,7 +15,7 @@ public partial class Locations
 
     public double? Longitude { get; set; }
 
-    public string? LocationType { get; set; }
+    public string? LocationName { get; set; }
 
     public DateTime? CreatedAt { get; set; }
 

@@ -171,3 +171,4 @@ C:\Users\Jackb\Documents\Software Projects\LetsCarpool\LetsCarpool.Server\bin\De
 C:\Users\Jackb\Documents\Software Projects\LetsCarpool\LetsCarpool.Server\bin\Debug\net8.0\runtimes\win\lib\net6.0\System.Security.Cryptography.ProtectedData.dll
 C:\Users\Jackb\Documents\Software Projects\LetsCarpool\LetsCarpool.Server\bin\Debug\net8.0\runtimes\browser\lib\net8.0\System.Text.Encodings.Web.dll
 C:\Users\Jackb\Documents\Software Projects\LetsCarpool\LetsCarpool.Server\bin\Debug\net8.0\runtimes\win\lib\net6.0\System.Windows.Extensions.dll
+C:\Users\Jackb\Documents\Software Projects\LetsCarpool\LetsCarpool.Server\obj\Debug\net8.0\LetsCarpool.Server.sourcelink.json
