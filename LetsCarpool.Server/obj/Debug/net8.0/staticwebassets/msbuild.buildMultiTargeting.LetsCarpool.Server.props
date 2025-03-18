@@ -1,0 +1,3 @@
+﻿<Project>
+  <Import Project="..\build\LetsCarpool.Server.props" />
+</Project>

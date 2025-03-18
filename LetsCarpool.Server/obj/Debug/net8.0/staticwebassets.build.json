@@ -1,0 +1,24 @@
+{
+  "Version": 1,
+  "Hash": "DmuvI4TQCYw0y/nxB+ghT0cIxI4UYDxVBGRpjpM3LaY=",
+  "Source": "LetsCarpool.Server",
+  "BasePath": "_content/LetsCarpool.Server",
+  "Mode": "Default",
+  "ManifestType": "Build",
+  "ReferencedProjectsConfiguration": [
+    {
+      "Identity": "C:\\Users\\Jackb\\Documents\\Software Projects\\LetsCarpool\\letscarpool.client\\letscarpool.client.esproj",
+      "Version": 2,
+      "Source": "letscarpool.client",
+      "GetPublishAssetsTargets": "GetCurrentProjectPublishStaticWebAssetItems",
+      "AdditionalPublishProperties": "",
+      "AdditionalPublishPropertiesToRemove": "WebPublishProfileFile;TargetFramework;RuntimeIdentifier;SelfContained",
+      "GetBuildAssetsTargets": "GetCurrentProjectBuildStaticWebAssetItems",
+      "AdditionalBuildProperties": "",
+      "AdditionalBuildPropertiesToRemove": "WebPublishProfileFile;TargetFramework;RuntimeIdentifier;SelfContained"
+    }
+  ],
+  "DiscoveryPatterns": [],
+  "Assets": [],
+  "Endpoints": []
+}

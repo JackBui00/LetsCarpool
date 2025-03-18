@@ -1,0 +1,6 @@
+@LetsCarpool.Server_HostAddress = http://localhost:5252
+
+GET {{LetsCarpool.Server_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

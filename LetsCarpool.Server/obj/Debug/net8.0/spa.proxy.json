@@ -1,0 +1,10 @@
+{
+"SpaProxyServer": {
+"ServerUrl": "https://localhost:57082",
+"RedirectUrl": "",
+"LaunchCommand": "npm run dev",
+"WorkingDirectory": "C:\\Users\\Jackb\\Documents\\Software Projects\\LetsCarpool\\LetsCarpool.Server\\..\\letscarpool.client",
+"MaxTimeoutInSeconds": "120",
+"KeepRunning": "false"
+}
+}

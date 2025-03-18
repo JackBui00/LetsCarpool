@@ -1,0 +1,310 @@
+{
+  "Version": 1,
+  "WorkspaceRootPath": "C:\\Users\\Jackb\\Documents\\Software Projects\\LetsCarpool\\",
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{CDDDD1D9-366E-485A-9BD2-7D819084DB68}|LetsCarpool.Server\\LetsCarpool.Server.csproj|c:\\users\\jackb\\documents\\software projects\\letscarpool\\letscarpool.server\\controllers\\weatherforecastcontroller.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{CDDDD1D9-366E-485A-9BD2-7D819084DB68}|LetsCarpool.Server\\LetsCarpool.Server.csproj|solutionrelative:letscarpool.server\\controllers\\weatherforecastcontroller.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{CDDDD1D9-366E-485A-9BD2-7D819084DB68}|LetsCarpool.Server\\LetsCarpool.Server.csproj|c:\\users\\jackb\\documents\\software projects\\letscarpool\\letscarpool.server\\models\\users.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{CDDDD1D9-366E-485A-9BD2-7D819084DB68}|LetsCarpool.Server\\LetsCarpool.Server.csproj|solutionrelative:letscarpool.server\\models\\users.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{CDDDD1D9-366E-485A-9BD2-7D819084DB68}|LetsCarpool.Server\\LetsCarpool.Server.csproj|c:\\users\\jackb\\documents\\software projects\\letscarpool\\letscarpool.server\\models\\roles.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{CDDDD1D9-366E-485A-9BD2-7D819084DB68}|LetsCarpool.Server\\LetsCarpool.Server.csproj|solutionrelative:letscarpool.server\\models\\roles.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{CDDDD1D9-366E-485A-9BD2-7D819084DB68}|LetsCarpool.Server\\LetsCarpool.Server.csproj|c:\\users\\jackb\\documents\\software projects\\letscarpool\\letscarpool.server\\models\\locations.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{CDDDD1D9-366E-485A-9BD2-7D819084DB68}|LetsCarpool.Server\\LetsCarpool.Server.csproj|solutionrelative:letscarpool.server\\models\\locations.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{CDDDD1D9-366E-485A-9BD2-7D819084DB68}|LetsCarpool.Server\\LetsCarpool.Server.csproj|c:\\users\\jackb\\documents\\software projects\\letscarpool\\letscarpool.server\\models\\authtokens.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{CDDDD1D9-366E-485A-9BD2-7D819084DB68}|LetsCarpool.Server\\LetsCarpool.Server.csproj|solutionrelative:letscarpool.server\\models\\authtokens.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{CDDDD1D9-366E-485A-9BD2-7D819084DB68}|LetsCarpool.Server\\LetsCarpool.Server.csproj|c:\\users\\jackb\\documents\\software projects\\letscarpool\\letscarpool.server\\models\\carpoolmatches.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{CDDDD1D9-366E-485A-9BD2-7D819084DB68}|LetsCarpool.Server\\LetsCarpool.Server.csproj|solutionrelative:letscarpool.server\\models\\carpoolmatches.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{CDDDD1D9-366E-485A-9BD2-7D819084DB68}|LetsCarpool.Server\\LetsCarpool.Server.csproj|c:\\users\\jackb\\documents\\software projects\\letscarpool\\letscarpool.server\\models\\riderequests.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{CDDDD1D9-366E-485A-9BD2-7D819084DB68}|LetsCarpool.Server\\LetsCarpool.Server.csproj|solutionrelative:letscarpool.server\\models\\riderequests.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{CDDDD1D9-366E-485A-9BD2-7D819084DB68}|LetsCarpool.Server\\LetsCarpool.Server.csproj|c:\\users\\jackb\\documents\\software projects\\letscarpool\\letscarpool.server\\models\\ridepreferences.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{CDDDD1D9-366E-485A-9BD2-7D819084DB68}|LetsCarpool.Server\\LetsCarpool.Server.csproj|solutionrelative:letscarpool.server\\models\\ridepreferences.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{CDDDD1D9-366E-485A-9BD2-7D819084DB68}|LetsCarpool.Server\\LetsCarpool.Server.csproj|c:\\users\\jackb\\documents\\software projects\\letscarpool\\letscarpool.server\\models\\ridehistory.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{CDDDD1D9-366E-485A-9BD2-7D819084DB68}|LetsCarpool.Server\\LetsCarpool.Server.csproj|solutionrelative:letscarpool.server\\models\\ridehistory.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{CDDDD1D9-366E-485A-9BD2-7D819084DB68}|LetsCarpool.Server\\LetsCarpool.Server.csproj|c:\\users\\jackb\\documents\\software projects\\letscarpool\\letscarpool.server\\letscarpool.server.csproj||{FA3CD31E-987B-443A-9B81-186104E8DAC1}",
+      "RelativeMoniker": "D:0:0:{CDDDD1D9-366E-485A-9BD2-7D819084DB68}|LetsCarpool.Server\\LetsCarpool.Server.csproj|solutionrelative:letscarpool.server\\letscarpool.server.csproj||{FA3CD31E-987B-443A-9B81-186104E8DAC1}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{CDDDD1D9-366E-485A-9BD2-7D819084DB68}|LetsCarpool.Server\\LetsCarpool.Server.csproj|c:\\users\\jackb\\documents\\software projects\\letscarpool\\letscarpool.server\\properties\\servicedependencies.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}",
+      "RelativeMoniker": "D:0:0:{CDDDD1D9-366E-485A-9BD2-7D819084DB68}|LetsCarpool.Server\\LetsCarpool.Server.csproj|solutionrelative:letscarpool.server\\properties\\servicedependencies.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{CDDDD1D9-366E-485A-9BD2-7D819084DB68}|LetsCarpool.Server\\LetsCarpool.Server.csproj|c:\\users\\jackb\\documents\\software projects\\letscarpool\\letscarpool.server\\properties\\launchsettings.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}",
+      "RelativeMoniker": "D:0:0:{CDDDD1D9-366E-485A-9BD2-7D819084DB68}|LetsCarpool.Server\\LetsCarpool.Server.csproj|solutionrelative:letscarpool.server\\properties\\launchsettings.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{CDDDD1D9-366E-485A-9BD2-7D819084DB68}|LetsCarpool.Server\\LetsCarpool.Server.csproj|c:\\users\\jackb\\documents\\software projects\\letscarpool\\letscarpool.server\\changelog.md||{EFC0BB08-EA7D-40C6-A696-C870411A895B}",
+      "RelativeMoniker": "D:0:0:{CDDDD1D9-366E-485A-9BD2-7D819084DB68}|LetsCarpool.Server\\LetsCarpool.Server.csproj|solutionrelative:letscarpool.server\\changelog.md||{EFC0BB08-EA7D-40C6-A696-C870411A895B}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{CDDDD1D9-366E-485A-9BD2-7D819084DB68}|LetsCarpool.Server\\LetsCarpool.Server.csproj|c:\\users\\jackb\\documents\\software projects\\letscarpool\\letscarpool.server\\letscarpool.server.http||{5703B403-55E7-4C63-8C88-A8F52C7A45C5}",
+      "RelativeMoniker": "D:0:0:{CDDDD1D9-366E-485A-9BD2-7D819084DB68}|LetsCarpool.Server\\LetsCarpool.Server.csproj|solutionrelative:letscarpool.server\\letscarpool.server.http||{5703B403-55E7-4C63-8C88-A8F52C7A45C5}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{CDDDD1D9-366E-485A-9BD2-7D819084DB68}|LetsCarpool.Server\\LetsCarpool.Server.csproj|c:\\users\\jackb\\documents\\software projects\\letscarpool\\letscarpool.server\\appsettings.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}",
+      "RelativeMoniker": "D:0:0:{CDDDD1D9-366E-485A-9BD2-7D819084DB68}|LetsCarpool.Server\\LetsCarpool.Server.csproj|solutionrelative:letscarpool.server\\appsettings.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{CDDDD1D9-366E-485A-9BD2-7D819084DB68}|LetsCarpool.Server\\LetsCarpool.Server.csproj|c:\\users\\jackb\\documents\\software projects\\letscarpool\\letscarpool.server\\program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{CDDDD1D9-366E-485A-9BD2-7D819084DB68}|LetsCarpool.Server\\LetsCarpool.Server.csproj|solutionrelative:letscarpool.server\\program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{CDDDD1D9-366E-485A-9BD2-7D819084DB68}|LetsCarpool.Server\\LetsCarpool.Server.csproj|c:\\users\\jackb\\documents\\software projects\\letscarpool\\letscarpool.server\\weatherforecast.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{CDDDD1D9-366E-485A-9BD2-7D819084DB68}|LetsCarpool.Server\\LetsCarpool.Server.csproj|solutionrelative:letscarpool.server\\weatherforecast.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    }
+  ],
+  "DocumentGroupContainers": [
+    {
+      "Orientation": 0,
+      "VerticalTabListWidth": 256,
+      "DocumentGroups": [
+        {
+          "DockedWidth": 200,
+          "SelectedChildIndex": 12,
+          "Children": [
+            {
+              "$type": "Bookmark",
+              "Name": "ST:0:0:{3ae79031-e1bc-11d0-8f78-00a0c9110057}"
+            },
+            {
+              "$type": "Bookmark",
+              "Name": "ST:0:0:{40ea2e6b-2121-4bb8-a43e-c83c04b51041}"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 1,
+              "Title": "Users.cs",
+              "DocumentMoniker": "C:\\Users\\Jackb\\Documents\\Software Projects\\LetsCarpool\\LetsCarpool.Server\\Models\\Users.cs",
+              "RelativeDocumentMoniker": "LetsCarpool.Server\\Models\\Users.cs",
+              "ToolTip": "C:\\Users\\Jackb\\Documents\\Software Projects\\LetsCarpool\\LetsCarpool.Server\\Models\\Users.cs",
+              "RelativeToolTip": "LetsCarpool.Server\\Models\\Users.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAgAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-03-18T00:08:43.748Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 2,
+              "Title": "Roles.cs",
+              "DocumentMoniker": "C:\\Users\\Jackb\\Documents\\Software Projects\\LetsCarpool\\LetsCarpool.Server\\Models\\Roles.cs",
+              "RelativeDocumentMoniker": "LetsCarpool.Server\\Models\\Roles.cs",
+              "ToolTip": "C:\\Users\\Jackb\\Documents\\Software Projects\\LetsCarpool\\LetsCarpool.Server\\Models\\Roles.cs",
+              "RelativeToolTip": "LetsCarpool.Server\\Models\\Roles.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAYAAAABAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-03-18T00:08:43.247Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 6,
+              "Title": "RideRequests.cs",
+              "DocumentMoniker": "C:\\Users\\Jackb\\Documents\\Software Projects\\LetsCarpool\\LetsCarpool.Server\\Models\\RideRequests.cs",
+              "RelativeDocumentMoniker": "LetsCarpool.Server\\Models\\RideRequests.cs",
+              "ToolTip": "C:\\Users\\Jackb\\Documents\\Software Projects\\LetsCarpool\\LetsCarpool.Server\\Models\\RideRequests.cs",
+              "RelativeToolTip": "LetsCarpool.Server\\Models\\RideRequests.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-03-18T00:08:42.775Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 7,
+              "Title": "RidePreferences.cs",
+              "DocumentMoniker": "C:\\Users\\Jackb\\Documents\\Software Projects\\LetsCarpool\\LetsCarpool.Server\\Models\\RidePreferences.cs",
+              "RelativeDocumentMoniker": "LetsCarpool.Server\\Models\\RidePreferences.cs",
+              "ToolTip": "C:\\Users\\Jackb\\Documents\\Software Projects\\LetsCarpool\\LetsCarpool.Server\\Models\\RidePreferences.cs",
+              "RelativeToolTip": "LetsCarpool.Server\\Models\\RidePreferences.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-03-18T00:08:41.434Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 8,
+              "Title": "RideHistory.cs",
+              "DocumentMoniker": "C:\\Users\\Jackb\\Documents\\Software Projects\\LetsCarpool\\LetsCarpool.Server\\Models\\RideHistory.cs",
+              "RelativeDocumentMoniker": "LetsCarpool.Server\\Models\\RideHistory.cs",
+              "ToolTip": "C:\\Users\\Jackb\\Documents\\Software Projects\\LetsCarpool\\LetsCarpool.Server\\Models\\RideHistory.cs",
+              "RelativeToolTip": "LetsCarpool.Server\\Models\\RideHistory.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-03-18T00:08:40.753Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 3,
+              "Title": "Locations.cs",
+              "DocumentMoniker": "C:\\Users\\Jackb\\Documents\\Software Projects\\LetsCarpool\\LetsCarpool.Server\\Models\\Locations.cs",
+              "RelativeDocumentMoniker": "LetsCarpool.Server\\Models\\Locations.cs",
+              "ToolTip": "C:\\Users\\Jackb\\Documents\\Software Projects\\LetsCarpool\\LetsCarpool.Server\\Models\\Locations.cs",
+              "RelativeToolTip": "LetsCarpool.Server\\Models\\Locations.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-03-18T00:08:40.191Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 5,
+              "Title": "CarpoolMatches.cs",
+              "DocumentMoniker": "C:\\Users\\Jackb\\Documents\\Software Projects\\LetsCarpool\\LetsCarpool.Server\\Models\\CarpoolMatches.cs",
+              "RelativeDocumentMoniker": "LetsCarpool.Server\\Models\\CarpoolMatches.cs",
+              "ToolTip": "C:\\Users\\Jackb\\Documents\\Software Projects\\LetsCarpool\\LetsCarpool.Server\\Models\\CarpoolMatches.cs",
+              "RelativeToolTip": "LetsCarpool.Server\\Models\\CarpoolMatches.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-03-18T00:08:39.699Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 4,
+              "Title": "AuthTokens.cs",
+              "DocumentMoniker": "C:\\Users\\Jackb\\Documents\\Software Projects\\LetsCarpool\\LetsCarpool.Server\\Models\\AuthTokens.cs",
+              "RelativeDocumentMoniker": "LetsCarpool.Server\\Models\\AuthTokens.cs",
+              "ToolTip": "C:\\Users\\Jackb\\Documents\\Software Projects\\LetsCarpool\\LetsCarpool.Server\\Models\\AuthTokens.cs",
+              "RelativeToolTip": "LetsCarpool.Server\\Models\\AuthTokens.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-03-18T00:08:38.87Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 11,
+              "Title": "launchSettings.json",
+              "DocumentMoniker": "C:\\Users\\Jackb\\Documents\\Software Projects\\LetsCarpool\\LetsCarpool.Server\\Properties\\launchSettings.json",
+              "RelativeDocumentMoniker": "LetsCarpool.Server\\Properties\\launchSettings.json",
+              "ToolTip": "C:\\Users\\Jackb\\Documents\\Software Projects\\LetsCarpool\\LetsCarpool.Server\\Properties\\launchSettings.json",
+              "RelativeToolTip": "LetsCarpool.Server\\Properties\\launchSettings.json",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001642|",
+              "WhenOpened": "2025-03-18T00:00:06.417Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 12,
+              "Title": "CHANGELOG.md",
+              "DocumentMoniker": "C:\\Users\\Jackb\\Documents\\Software Projects\\LetsCarpool\\LetsCarpool.Server\\CHANGELOG.md",
+              "RelativeDocumentMoniker": "LetsCarpool.Server\\CHANGELOG.md",
+              "ToolTip": "C:\\Users\\Jackb\\Documents\\Software Projects\\LetsCarpool\\LetsCarpool.Server\\CHANGELOG.md",
+              "RelativeToolTip": "LetsCarpool.Server\\CHANGELOG.md",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAYAAAArAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001818|",
+              "WhenOpened": "2025-03-17T23:37:13.697Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "WeatherForecastController.cs",
+              "DocumentMoniker": "C:\\Users\\Jackb\\Documents\\Software Projects\\LetsCarpool\\LetsCarpool.Server\\Controllers\\WeatherForecastController.cs",
+              "RelativeDocumentMoniker": "LetsCarpool.Server\\Controllers\\WeatherForecastController.cs",
+              "ToolTip": "C:\\Users\\Jackb\\Documents\\Software Projects\\LetsCarpool\\LetsCarpool.Server\\Controllers\\WeatherForecastController.cs",
+              "RelativeToolTip": "LetsCarpool.Server\\Controllers\\WeatherForecastController.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-03-17T21:41:39.91Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 10,
+              "Title": "serviceDependencies.json",
+              "DocumentMoniker": "C:\\Users\\Jackb\\Documents\\Software Projects\\LetsCarpool\\LetsCarpool.Server\\Properties\\serviceDependencies.json",
+              "RelativeDocumentMoniker": "LetsCarpool.Server\\Properties\\serviceDependencies.json",
+              "ToolTip": "C:\\Users\\Jackb\\Documents\\Software Projects\\LetsCarpool\\LetsCarpool.Server\\Properties\\serviceDependencies.json",
+              "RelativeToolTip": "LetsCarpool.Server\\Properties\\serviceDependencies.json",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001642|",
+              "WhenOpened": "2025-03-18T00:00:07.642Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 13,
+              "Title": "LetsCarpool.Server.http",
+              "DocumentMoniker": "C:\\Users\\Jackb\\Documents\\Software Projects\\LetsCarpool\\LetsCarpool.Server\\LetsCarpool.Server.http",
+              "RelativeDocumentMoniker": "LetsCarpool.Server\\LetsCarpool.Server.http",
+              "ToolTip": "C:\\Users\\Jackb\\Documents\\Software Projects\\LetsCarpool\\LetsCarpool.Server\\LetsCarpool.Server.http",
+              "RelativeToolTip": "LetsCarpool.Server\\LetsCarpool.Server.http",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003502|",
+              "WhenOpened": "2025-03-17T23:59:57.576Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 14,
+              "Title": "appsettings.json",
+              "DocumentMoniker": "C:\\Users\\Jackb\\Documents\\Software Projects\\LetsCarpool\\LetsCarpool.Server\\appsettings.json",
+              "RelativeDocumentMoniker": "LetsCarpool.Server\\appsettings.json",
+              "ToolTip": "C:\\Users\\Jackb\\Documents\\Software Projects\\LetsCarpool\\LetsCarpool.Server\\appsettings.json",
+              "RelativeToolTip": "LetsCarpool.Server\\appsettings.json",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001642|",
+              "WhenOpened": "2025-03-17T23:59:46.585Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 16,
+              "Title": "WeatherForecast.cs",
+              "DocumentMoniker": "C:\\Users\\Jackb\\Documents\\Software Projects\\LetsCarpool\\LetsCarpool.Server\\WeatherForecast.cs",
+              "RelativeDocumentMoniker": "LetsCarpool.Server\\WeatherForecast.cs",
+              "ToolTip": "C:\\Users\\Jackb\\Documents\\Software Projects\\LetsCarpool\\LetsCarpool.Server\\WeatherForecast.cs",
+              "RelativeToolTip": "LetsCarpool.Server\\WeatherForecast.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-03-17T23:28:34.792Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 15,
+              "Title": "Program.cs",
+              "DocumentMoniker": "C:\\Users\\Jackb\\Documents\\Software Projects\\LetsCarpool\\LetsCarpool.Server\\Program.cs",
+              "RelativeDocumentMoniker": "LetsCarpool.Server\\Program.cs",
+              "ToolTip": "C:\\Users\\Jackb\\Documents\\Software Projects\\LetsCarpool\\LetsCarpool.Server\\Program.cs",
+              "RelativeToolTip": "LetsCarpool.Server\\Program.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAABEAAAAVAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-03-17T23:28:31.764Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 9,
+              "Title": "LetsCarpool.Server.csproj",
+              "DocumentMoniker": "C:\\Users\\Jackb\\Documents\\Software Projects\\LetsCarpool\\LetsCarpool.Server\\LetsCarpool.Server.csproj",
+              "RelativeDocumentMoniker": "LetsCarpool.Server\\LetsCarpool.Server.csproj",
+              "ToolTip": "C:\\Users\\Jackb\\Documents\\Software Projects\\LetsCarpool\\LetsCarpool.Server\\LetsCarpool.Server.csproj",
+              "RelativeToolTip": "LetsCarpool.Server\\LetsCarpool.Server.csproj",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAABUAAAAXAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000758|",
+              "WhenOpened": "2025-03-17T21:29:31.028Z",
+              "EditorCaption": ""
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
