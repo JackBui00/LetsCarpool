@@ -15,7 +15,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("LetsCarpool.Server")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+5acb5ffaf5cd6dd3bbce917fb30d41d0c2c36520")]
 [assembly: System.Reflection.AssemblyProductAttribute("LetsCarpool.Server")]
 [assembly: System.Reflection.AssemblyTitleAttribute("LetsCarpool.Server")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
