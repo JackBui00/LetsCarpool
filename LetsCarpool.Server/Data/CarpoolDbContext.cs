@@ -5,13 +5,13 @@ using Microsoft.EntityFrameworkCore;
 
 namespace LetsCarpool.Server.Data;
 
-public partial class YourDbContextName : DbContext
+public partial class CarpoolDbContext : DbContext
 {
-    public YourDbContextName()
+    public CarpoolDbContext()
     {
     }
 
-    public YourDbContextName(DbContextOptions<YourDbContextName> options)
+    public CarpoolDbContext(DbContextOptions<CarpoolDbContext> options)
         : base(options)
     {
     }
@@ -36,7 +36,7 @@ public partial class YourDbContextName : DbContext
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
 #warning To protect potentially sensitive information in your connection string, you should move it out of source code. You can avoid scaffolding the connection string by using the Name= syntax to read it from configuration - see https://go.microsoft.com/fwlink/?linkid=2131148. For more guidance on storing connection strings, see https://go.microsoft.com/fwlink/?LinkId=723263.
-        => optionsBuilder.UseSqlServer("Server=tcp:letscarpooldb.database.windows.net;Database=carpoolDB;Authentication=Active Directory Interactive");
+        => optionsBuilder.UseSqlServer("Server=tcp:letscarpooldb.database.windows.net;Database=carpoolDB;User ID=LetsCarpoolAdmin;Password=Jb_202016!;MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;");
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -206,9 +206,9 @@ public partial class YourDbContextName : DbContext
 
             entity.HasIndex(e => e.Email, "IX_Users_Email");
 
-            entity.HasIndex(e => e.Email, "UQ_Users_Email").IsUnique();
+            entity.HasIndex(e => e.Email, "UQ_Email_Temp").IsUnique();
 
-            entity.HasIndex(e => e.Email, "UQ__Users__A9D105344BA86A33").IsUnique();
+            entity.HasIndex(e => e.Email, "UQ_Users_Email").IsUnique();
 
             entity.Property(e => e.Address).HasMaxLength(255);
             entity.Property(e => e.CreatedAt)
