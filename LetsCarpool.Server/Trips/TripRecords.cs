@@ -5,7 +5,7 @@ namespace LetsCarpool.Server.Trips;
 internal sealed class TripDatabase
 {
     public TripDatabase() { }
-    public int SchemaVersion { get; set; } = 1;
+    public int SchemaVersion { get; set; } = 2;
     public List<StoredTrip> Trips { get; set; } = [];
 }
 
@@ -16,7 +16,7 @@ internal sealed class StoredTrip
     public required string Name { get; set; }
     public DateTimeOffset ArrivalAt { get; set; }
     public required string TimeZoneId { get; set; }
-    public required PlanLocation Destination { get; set; }
+    public required TripLocation Destination { get; set; }
     public long Revision { get; set; } = 1;
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset InviteExpiresAt { get; set; }
@@ -43,7 +43,7 @@ internal sealed class StoredParticipant
     public StoredParticipant() { }
     public required string Id { get; set; }
     public required string Name { get; set; }
-    public required PlanLocation Origin { get; set; }
+    public required TripLocation Origin { get; set; }
     public bool CanDrive { get; set; }
     public int PassengerSeats { get; set; }
     public bool CanMeet { get; set; }

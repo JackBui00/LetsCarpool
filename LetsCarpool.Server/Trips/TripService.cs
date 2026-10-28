@@ -12,18 +12,21 @@ public sealed class TripService
     private readonly CarpoolPlanner planner;
     private readonly TimeProvider timeProvider;
     private readonly TimeSpan inviteLifetime;
+    private readonly bool allowPermanentMapboxStorage;
 
     internal TripService(ITripStore store, CarpoolPlanner planner, IConfiguration configuration, TimeProvider timeProvider)
     {
         this.store = store;
         this.planner = planner;
         this.timeProvider = timeProvider;
+        allowPermanentMapboxStorage = configuration.GetValue<bool>("Mapbox:AllowPermanentGeocodingStorage");
         var configuredDays = int.TryParse(configuration["CarpoolStore:InviteLifetimeDays"], out var days) ? days : 7;
         inviteLifetime = TimeSpan.FromDays(Math.Clamp(configuredDays, 1, 30));
     }
 
     public async Task<CreateTripResponse> CreateAsync(CreateTripRequest request, CancellationToken cancellationToken)
     {
+        ValidatePersistableLocation(request.Destination, "destination");
         if (string.IsNullOrWhiteSpace(request.Name)) throw Validation("name", "Trip name is required.");
         var arrival = ParseArrival(request.ArrivalAt, request.TimeZoneId);
         var now = timeProvider.GetUtcNow();
@@ -80,6 +83,7 @@ public sealed class TripService
                 throw new TripApiException(409, "Join already processed", "This join request already completed and will not create another participant. Continue with the participant capability saved in this browser. If none was saved, access cannot be recovered without an account.", "join_already_processed");
             if (trip.Participants.Count >= MaximumJoinedParticipants)
                 throw new TripApiException(409, "Trip is full", "This trip already has the maximum of six joined participants.", "trip_capacity_reached");
+            ValidatePersistableLocation(request.Origin, "origin");
             if (string.IsNullOrWhiteSpace(request.Name)) throw Validation("name", "Name is required.");
 
             trip.Participants.Add(new StoredParticipant
@@ -125,7 +129,11 @@ public sealed class TripService
             trip.Name = name;
             trip.TimeZoneId = timeZoneId;
             trip.ArrivalAt = arrival;
-            trip.Destination = request.Destination ?? trip.Destination;
+            if (request.Destination is not null)
+            {
+                ValidatePersistableLocation(request.Destination, "destination");
+                trip.Destination = request.Destination;
+            }
             ExtendAccessExpiry(trip, arrival);
             InvalidatePlan(trip);
             return ToOrganizerView(trip);
@@ -166,6 +174,7 @@ public sealed class TripService
             RequireRevision(trip, request.ExpectedRevision);
             var participant = trip.Participants.SingleOrDefault(person => person.Id == capability.ParticipantId)
                 ?? throw AccessUnavailable();
+            ValidatePersistableLocation(request.Origin, "origin");
             if (string.IsNullOrWhiteSpace(request.Name)) throw Validation("name", "Name is required.");
             if (!participant.LocationDisclosureAccepted && request.LocationDisclosureAccepted != true)
                 throw Validation("locationDisclosureAccepted", "Accept the location-sharing disclosure before saving this profile.");
@@ -235,12 +244,12 @@ public sealed class TripService
             if (trip.Participants.Count == 0)
                 throw new TripApiException(409, "No joined participants", "Join at least one participant before generating a plan.", "no_participants");
             trip.PlanGenerationId = (trip.PlanGenerationId ?? 0) + 1;
-            return new PlanGenerationSnapshot(trip.Id, trip.Revision, trip.PlanGenerationId.Value, trip.Destination,
+            return new PlanGenerationSnapshot(trip.Id, trip.Revision, trip.PlanGenerationId.Value, trip.Destination.ToPlanLocation(),
                 trip.Participants.Select(person => new PlanParticipant
                 {
                     Id = person.Id,
                     Name = person.Name,
-                    Origin = person.Origin,
+                    Origin = person.Origin.ToPlanLocation(),
                     CanDrive = person.CanDrive,
                     PassengerSeats = person.PassengerSeats,
                     CanMeet = person.CanMeet,
@@ -292,6 +301,18 @@ public sealed class TripService
     private static TripParticipantView ToParticipantView(StoredParticipant participant) => new(
         participant.Id, participant.Name, participant.Origin, participant.CanDrive, participant.PassengerSeats,
         participant.CanMeet, participant.MaxDetourMinutes, participant.LocationDisclosureAccepted, participant.JoinedAt);
+
+    private void ValidatePersistableLocation(TripLocation location, string path)
+    {
+        if (location is null)
+            throw Validation(path, "Location is required.");
+        if (location.Provenance is null)
+            throw Validation($"{path}.provenance", "Location provenance is required.");
+        if (location.Provenance == TripLocationProvenance.MapboxSearchBoxTemporary)
+            throw Validation($"{path}.provenance", "Temporary Mapbox Search Box results cannot be saved to a trip.");
+        if (location.Provenance == TripLocationProvenance.MapboxGeocodingPermanent && !allowPermanentMapboxStorage)
+            throw Validation($"{path}.provenance", "Permanent Mapbox location storage is disabled until the server is explicitly configured for an eligible account.");
+    }
 
     private static StoredTrip FindTrip(TripDatabase database, string tripId)
     {

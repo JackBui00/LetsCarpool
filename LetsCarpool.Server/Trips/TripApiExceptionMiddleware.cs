@@ -74,6 +74,6 @@ internal sealed class TripApiExceptionMiddleware(RequestDelegate next)
         context.Response.Clear();
         context.Response.StatusCode = problem.Status ?? StatusCodes.Status500InternalServerError;
         context.Response.ContentType = "application/problem+json";
-        await JsonSerializer.SerializeAsync(context.Response.Body, problem, JsonOptions, context.RequestAborted);
+        await JsonSerializer.SerializeAsync(context.Response.Body, problem, problem.GetType(), JsonOptions, context.RequestAborted);
     }
 }

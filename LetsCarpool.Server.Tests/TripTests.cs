@@ -3,7 +3,9 @@ using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
 using LetsCarpool.Server.Carpooling;
 using LetsCarpool.Server.Trips;
+using LetsCarpool.Server.Controllers;
 using Microsoft.Extensions.Configuration;
+using Microsoft.AspNetCore.Mvc;
 
 internal static class TripTests
 {
@@ -193,6 +195,111 @@ internal static class TripTests
         True(driver.ParticipantId != rider.ParticipantId);
     }
 
+    public static void LocationProvenanceValidationAndPersistence()
+    {
+        using var fixture = new Fixture();
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        TripJson.Configure(options);
+
+        var missingProvenance = new TripLocation { Label = "Destination", Latitude = 0, Longitude = 0 };
+        True(missingProvenance.Validate("destination").Any(error => error.MemberNames.Contains("destination.provenance")));
+        var missingRequest = fixture.CreateRequest(destination: missingProvenance);
+        var missingErrors = new List<ValidationResult>();
+        True(!Validator.TryValidateObject(missingRequest, new ValidationContext(missingRequest), missingErrors, validateAllProperties: true));
+        True(missingErrors.Any(error => error.MemberNames.Contains("destination.provenance")));
+        Throws<JsonException>(() => JsonSerializer.Deserialize<TripLocation>("""{"label":"X","latitude":0,"longitude":0,"provenance":"unknown"}""", options));
+
+        var temporary = fixture.CreateRequest(destination: fixture.Location(0, .2, "Temporary", TripLocationProvenance.MapboxSearchBoxTemporary));
+        var temporaryError = Throws<TripApiException>(() => fixture.Service.CreateAsync(temporary, CancellationToken.None).GetAwaiter().GetResult());
+        Equal("validation_error", temporaryError.Code);
+        True(temporaryError.Errors!.ContainsKey("destination.provenance"));
+
+        var permanent = fixture.CreateRequest(destination: fixture.Location(0, .2, "Permanent", TripLocationProvenance.MapboxGeocodingPermanent));
+        var permanentError = Throws<TripApiException>(() => fixture.Service.CreateAsync(permanent, CancellationToken.None).GetAwaiter().GetResult());
+        True(permanentError.Detail.Contains("disabled", StringComparison.Ordinal));
+
+        var trip = fixture.Service.CreateAsync(fixture.CreateRequest(), CancellationToken.None).GetAwaiter().GetResult();
+        var serialized = JsonSerializer.Serialize(fixture.Service.GetOrganizerAsync(trip.TripId, trip.OrganizerCapability, CancellationToken.None).GetAwaiter().GetResult(), options);
+        using (var organizer = JsonDocument.Parse(serialized))
+            Equal("userProvided", organizer.RootElement.GetProperty("destination").GetProperty("provenance").GetString());
+
+        var invalidJoin = Throws<TripApiException>(() => fixture.Service.JoinAsync(trip.TripId, trip.InviteCapability, Guid.NewGuid().ToString(), fixture.JoinRequest("Temporary", origin: fixture.Location(0, .05, "Temporary", TripLocationProvenance.MapboxSearchBoxTemporary)), CancellationToken.None).GetAwaiter().GetResult());
+        True(invalidJoin.Errors!.ContainsKey("origin.provenance"));
+        Equal(0, fixture.Service.GetOrganizerAsync(trip.TripId, trip.OrganizerCapability, CancellationToken.None).GetAwaiter().GetResult().Participants.Count);
+        var join = fixture.Service.JoinAsync(trip.TripId, trip.InviteCapability, Guid.NewGuid().ToString(), fixture.JoinRequest("Rider"), CancellationToken.None).GetAwaiter().GetResult();
+        var invalidEdit = Throws<TripApiException>(() => fixture.Service.UpdateParticipantAsync(trip.TripId, join.ParticipantCapability, new UpdateParticipantRequest
+        {
+            ExpectedRevision = join.Revision,
+            Name = "Rider invalid edit",
+            Origin = fixture.Location(0, .06, "Temporary edit", TripLocationProvenance.MapboxSearchBoxTemporary),
+            CanMeet = true
+        }, CancellationToken.None).GetAwaiter().GetResult());
+        True(invalidEdit.Errors!.ContainsKey("origin.provenance"));
+        Equal(join.Revision, fixture.Service.GetParticipantAsync(trip.TripId, join.ParticipantCapability, CancellationToken.None).GetAwaiter().GetResult().Revision);
+        fixture.Service.UpdateParticipantAsync(trip.TripId, join.ParticipantCapability, new UpdateParticipantRequest
+        {
+            ExpectedRevision = join.Revision,
+            Name = "Rider edited",
+            Origin = fixture.Location(0, .05, "Rider origin", TripLocationProvenance.UserProvided),
+            CanMeet = true
+        }, CancellationToken.None).GetAwaiter().GetResult();
+        var guest = fixture.Service.GetParticipantAsync(trip.TripId, join.ParticipantCapability, CancellationToken.None).GetAwaiter().GetResult();
+        Equal(TripLocationProvenance.UserProvided, guest.Profile.Origin.Provenance);
+
+        var updatedTrip = fixture.Service.UpdateTripAsync(trip.TripId, trip.OrganizerCapability, new UpdateTripRequest
+        {
+            ExpectedRevision = guest.Revision,
+            Name = "Renamed"
+        }, CancellationToken.None).GetAwaiter().GetResult();
+        Equal(TripLocationProvenance.UserProvided, updatedTrip.Destination.Provenance);
+        var storedText = File.ReadAllText(fixture.StorePath);
+        True(storedText.Contains("\"provenance\":\"userProvided\"", StringComparison.Ordinal));
+
+        using var eligibleFixture = new Fixture(allowPermanentStorage: true);
+        var eligibleService = eligibleFixture.CreateService(new JsonTripStore(eligibleFixture.StorePath));
+        var permitted = eligibleService.CreateAsync(permanent, CancellationToken.None).GetAwaiter().GetResult();
+        Equal(TripLocationProvenance.MapboxGeocodingPermanent,
+            eligibleService.GetOrganizerAsync(permitted.TripId, permitted.OrganizerCapability, CancellationToken.None).GetAwaiter().GetResult().Destination.Provenance);
+
+        var controller = new TripsController(fixture.Service);
+        var action = controller.Create(fixture.CreateRequest(), CancellationToken.None).GetAwaiter().GetResult();
+        True(action.Result is CreatedResult);
+    }
+
+    public static void LegacyStoreFailsClosed()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "letscarpool-legacy-store-" + Guid.NewGuid().ToString("N") + ".json");
+        const string legacy = "{\"schemaVersion\":1,\"trips\":[]}";
+        try
+        {
+            File.WriteAllText(path, legacy);
+            Throws<InvalidDataException>(() => new JsonTripStore(path));
+            Equal(legacy, File.ReadAllText(path));
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
+    public static void TemporaryStoreLocationsFailClosed()
+    {
+        using var fixture = new Fixture();
+        fixture.Service.CreateAsync(fixture.CreateRequest(), CancellationToken.None).GetAwaiter().GetResult();
+        var path = Path.Combine(Path.GetTempPath(), "letscarpool-temporary-store-" + Guid.NewGuid().ToString("N") + ".json");
+        var temporary = File.ReadAllText(fixture.StorePath).Replace("\"provenance\":\"userProvided\"", "\"provenance\":\"mapboxSearchBoxTemporary\"", StringComparison.Ordinal);
+        try
+        {
+            File.WriteAllText(path, temporary);
+            Throws<InvalidDataException>(() => new JsonTripStore(path));
+            Equal(temporary, File.ReadAllText(path));
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
     public static void GenerationRevisionRace()
     {
         using var fixture = new Fixture();
@@ -227,7 +334,7 @@ internal static class TripTests
     private sealed class Fixture : IDisposable
     {
         private readonly ManualTimeProvider clock = new(DateTimeOffset.UtcNow);
-        private readonly IConfiguration configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>()).Build();
+        private readonly bool allowPermanentStorage;
         private readonly string root = Path.Combine(Path.GetTempPath(), "letscarpool-trip-tests-" + Guid.NewGuid().ToString("N"));
         private readonly JsonTripStore store;
         private TripService? service;
@@ -237,30 +344,35 @@ internal static class TripTests
         public ManualTimeProvider Clock => clock;
         public DateTimeOffset Arrival => clock.GetUtcNow().AddDays(20);
 
-        public Fixture()
+        public Fixture(bool allowPermanentStorage = false)
         {
+            this.allowPermanentStorage = allowPermanentStorage;
             Directory.CreateDirectory(root);
             store = new JsonTripStore(StorePath);
         }
 
         public TripService CreateService(JsonTripStore store, IDistanceProvider? distanceProvider = null) =>
-            new(store, new CarpoolPlanner(distanceProvider ?? new HaversineDistanceProvider()), configuration, clock);
+            new(store, new CarpoolPlanner(distanceProvider ?? new HaversineDistanceProvider()),
+                new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Mapbox:AllowPermanentGeocodingStorage"] = allowPermanentStorage ? "true" : "false"
+                }).Build(), clock);
 
-        public CreateTripRequest CreateRequest(string name = "Local trip") => new()
+        public CreateTripRequest CreateRequest(string name = "Local trip", TripLocation? destination = null) => new()
         {
             Name = name,
             ArrivalAt = Arrival.ToString("O", System.Globalization.CultureInfo.InvariantCulture),
             TimeZoneId = "UTC",
-            Destination = Location(0, .2, "Destination")
+            Destination = destination ?? Location(0, .2, "Destination")
         };
 
         public JoinTripResponse Join(CreateTripResponse trip, string idempotencyKey, string name) =>
             Service.JoinAsync(trip.TripId, trip.InviteCapability, idempotencyKey, JoinRequest(name), CancellationToken.None).GetAwaiter().GetResult();
 
-        public JoinTripRequest JoinRequest(string name, bool canDrive = false, int seats = 0, double latitude = 0, double longitude = .05) => new()
+        public JoinTripRequest JoinRequest(string name, bool canDrive = false, int seats = 0, double latitude = 0, double longitude = .05, TripLocation? origin = null) => new()
         {
             Name = name,
-            Origin = Location(latitude, longitude, name + " origin"),
+            Origin = origin ?? Location(latitude, longitude, name + " origin"),
             CanDrive = canDrive,
             PassengerSeats = seats,
             CanMeet = true,
@@ -268,7 +380,10 @@ internal static class TripTests
             LocationDisclosureAccepted = true
         };
 
-        public PlanLocation Location(double latitude, double longitude, string label = "Somewhere") => new() { Label = label, Latitude = latitude, Longitude = longitude };
+        public TripLocation Location(double latitude, double longitude, string label = "Somewhere", TripLocationProvenance provenance = TripLocationProvenance.UserProvided) => new()
+        {
+            Label = label, Latitude = latitude, Longitude = longitude, Provenance = provenance
+        };
 
         public void Dispose()
         {

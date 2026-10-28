@@ -19,6 +19,9 @@ var checks = new (string Name, Action Run)[]
     ("join idempotency and concurrent capacity", TripTests.JoinIdempotencyAndCapacity),
     ("trip plan revision invalidation and private assignment", TripTests.PlanRevisionAndPrivateAssignment),
     ("trip and join request validation", TripTests.TripAndJoinValidation),
+    ("trip location provenance validation and persistence", TripTests.LocationProvenanceValidationAndPersistence),
+    ("legacy trip store fails closed without mutation", TripTests.LegacyStoreFailsClosed),
+    ("temporary provider results are never loaded from persistence", TripTests.TemporaryStoreLocationsFailClosed),
     ("trip API response shape serialization", TripTests.ResponseShapeSerialization),
     ("revision race during plan generation", TripTests.GenerationRevisionRace)
 };

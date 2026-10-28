@@ -11,7 +11,7 @@ internal interface ITripStore
 
 internal sealed class JsonTripStore : ITripStore
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private static readonly JsonSerializerOptions JsonOptions = CreateJsonOptions();
     private readonly SemaphoreSlim gate = new(1, 1);
     private readonly string filePath;
     private TripDatabase database;
@@ -30,14 +30,26 @@ internal sealed class JsonTripStore : ITripStore
         {
             database = JsonSerializer.Deserialize<TripDatabase>(File.ReadAllBytes(filePath), JsonOptions)
                 ?? throw new InvalidDataException("The local trip store could not be read.");
-            if (database.SchemaVersion != 1)
-                throw new InvalidDataException("The local trip store has an unsupported schema version.");
+            if (database.SchemaVersion != 2)
+                throw new InvalidDataException("The local trip store has an unsupported schema version. The file was left unchanged; back it up before migrating or recreating local trips.");
+            if (database.Trips.Any(trip => !IsPersistable(trip.Destination) || trip.Participants.Any(person => !IsPersistable(person.Origin))))
+                throw new InvalidDataException("The local trip store contains a location without durable provenance or a temporary Mapbox result. The file was left unchanged.");
         }
         else
         {
             database = new TripDatabase();
         }
     }
+
+    private static JsonSerializerOptions CreateJsonOptions()
+    {
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        TripJson.Configure(options);
+        return options;
+    }
+
+    private static bool IsPersistable(TripLocation location) => location.Provenance is not null
+        and not TripLocationProvenance.MapboxSearchBoxTemporary;
 
     private static string ResolvePath(IWebHostEnvironment environment, IConfiguration configuration)
     {

@@ -1,4 +1,6 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using LetsCarpool.Server.Carpooling;
 
 namespace LetsCarpool.Server.Trips;
@@ -8,21 +10,21 @@ public sealed class CreateTripRequest : IValidatableObject
     [Required, StringLength(120, MinimumLength = 1)] public required string Name { get; init; }
     [Required] public required string ArrivalAt { get; init; }
     [Required, StringLength(100)] public required string TimeZoneId { get; init; }
-    [Required] public required PlanLocation Destination { get; init; }
+    [Required] public required TripLocation Destination { get; init; }
 
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
         if (string.IsNullOrWhiteSpace(Name)) yield return new ValidationResult("Trip name is required.", ["name"]);
         if (!TripValidation.TryParseArrival(ArrivalAt, out var arrival) || arrival <= DateTimeOffset.UtcNow)
             yield return new ValidationResult("Arrival time must be a future ISO 8601 timestamp with an explicit UTC offset.", ["arrivalAt"]);
-        foreach (var error in PlanValidation.ValidateLocation(Destination, "destination")) yield return error;
+        foreach (var error in Destination?.Validate("destination") ?? TripLocation.Required("destination")) yield return error;
     }
 }
 
 public sealed class JoinTripRequest : IValidatableObject
 {
     [Required, StringLength(120, MinimumLength = 1)] public required string Name { get; init; }
-    [Required] public required PlanLocation Origin { get; init; }
+    [Required] public required TripLocation Origin { get; init; }
     public bool CanDrive { get; init; }
     public int PassengerSeats { get; init; }
     public bool CanMeet { get; init; }
@@ -40,7 +42,7 @@ public sealed class JoinTripRequest : IValidatableObject
             yield return new ValidationResult("Maximum detour must be between 0 and 1440 minutes.", ["maxDetourMinutes"]);
         if (!LocationDisclosureAccepted)
             yield return new ValidationResult("Confirm that your selected location may be shared with the organizer and assigned carpool companions.", ["locationDisclosureAccepted"]);
-        foreach (var error in PlanValidation.ValidateLocation(Origin, "origin")) yield return error;
+        foreach (var error in Origin?.Validate("origin") ?? TripLocation.Required("origin")) yield return error;
     }
 }
 
@@ -50,7 +52,7 @@ public sealed class UpdateTripRequest : IValidatableObject
     [StringLength(120, MinimumLength = 1)] public string? Name { get; init; }
     public string? ArrivalAt { get; init; }
     [StringLength(100)] public string? TimeZoneId { get; init; }
-    public PlanLocation? Destination { get; init; }
+    public TripLocation? Destination { get; init; }
 
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
@@ -61,7 +63,7 @@ public sealed class UpdateTripRequest : IValidatableObject
         if (ArrivalAt is not null && (!TripValidation.TryParseArrival(ArrivalAt, out var arrival) || arrival <= DateTimeOffset.UtcNow))
             yield return new ValidationResult("Arrival time must be a future ISO 8601 timestamp with an explicit UTC offset.", ["arrivalAt"]);
         if (Destination is not null)
-            foreach (var error in PlanValidation.ValidateLocation(Destination, "destination")) yield return error;
+            foreach (var error in Destination.Validate("destination")) yield return error;
     }
 }
 
@@ -69,7 +71,7 @@ public sealed class UpdateParticipantRequest : IValidatableObject
 {
     public long ExpectedRevision { get; init; }
     [Required, StringLength(120, MinimumLength = 1)] public required string Name { get; init; }
-    [Required] public required PlanLocation Origin { get; init; }
+    [Required] public required TripLocation Origin { get; init; }
     public bool CanDrive { get; init; }
     public int PassengerSeats { get; init; }
     public bool CanMeet { get; init; }
@@ -88,7 +90,7 @@ public sealed class UpdateParticipantRequest : IValidatableObject
             yield return new ValidationResult("Maximum detour must be between 0 and 1440 minutes.", ["maxDetourMinutes"]);
         if (LocationDisclosureAccepted == false)
             yield return new ValidationResult("A previously accepted location-sharing disclosure cannot be withdrawn as part of a profile edit.", ["locationDisclosureAccepted"]);
-        foreach (var error in PlanValidation.ValidateLocation(Origin, "origin")) yield return error;
+        foreach (var error in Origin?.Validate("origin") ?? TripLocation.Required("origin")) yield return error;
     }
 }
 
@@ -106,14 +108,47 @@ public sealed class SelectTripPlanRequest : IValidatableObject
 
 public sealed record CreateTripResponse(string TripId, long Revision, string OrganizerCapability, DateTimeOffset OrganizerExpiresAt, string InviteCapability, DateTimeOffset InviteExpiresAt);
 public sealed record JoinTripResponse(string ParticipantId, string ParticipantCapability, long Revision);
-public sealed record InviteTripView(string TripId, string Name, DateTimeOffset ArrivalAt, string TimeZoneId, PlanLocation Destination, DateTimeOffset InviteExpiresAt);
-public sealed record TripParticipantView(string Id, string Name, PlanLocation Origin, bool CanDrive, int PassengerSeats, bool CanMeet, double MaxDetourMinutes, bool LocationDisclosureAccepted, DateTimeOffset JoinedAt);
-public sealed record OrganizerTripView(string TripId, string Name, DateTimeOffset ArrivalAt, string TimeZoneId, PlanLocation Destination, DateTimeOffset InviteExpiresAt, long Revision, IReadOnlyList<TripParticipantView> Participants, string? SelectedStrategy, GeneratedTripPlanView? CurrentPlan, bool PlanStale);
+public sealed record InviteTripView(string TripId, string Name, DateTimeOffset ArrivalAt, string TimeZoneId, TripLocation Destination, DateTimeOffset InviteExpiresAt);
+public sealed record TripParticipantView(string Id, string Name, TripLocation Origin, bool CanDrive, int PassengerSeats, bool CanMeet, double MaxDetourMinutes, bool LocationDisclosureAccepted, DateTimeOffset JoinedAt);
+public sealed record OrganizerTripView(string TripId, string Name, DateTimeOffset ArrivalAt, string TimeZoneId, TripLocation Destination, DateTimeOffset InviteExpiresAt, long Revision, IReadOnlyList<TripParticipantView> Participants, string? SelectedStrategy, GeneratedTripPlanView? CurrentPlan, bool PlanStale);
 public sealed record GeneratedTripPlanView(string PlanId, long BasedOnRevision, CarpoolPlanResponse Plan);
 public sealed record ParticipantAssignment(string Strategy, string Role, PersonSummary Driver, IReadOnlyList<PersonSummary> Riders, IReadOnlyList<PlanStop> Stops, double TotalDistanceMeters, double VehicleDistanceMeters, double IndependentTravelDistanceMeters, double DurationMinutes, IReadOnlyList<IndependentTravelLeg> IndependentTravelLegs);
-public sealed record ParticipantTripView(string TripId, string Name, DateTimeOffset ArrivalAt, string TimeZoneId, PlanLocation Destination, DateTimeOffset InviteExpiresAt, long Revision, TripParticipantView Profile, ParticipantAssignment? Assignment, string? UnassignedReason, bool PlanStale);
+public sealed record ParticipantTripView(string TripId, string Name, DateTimeOffset ArrivalAt, string TimeZoneId, TripLocation Destination, DateTimeOffset InviteExpiresAt, long Revision, TripParticipantView Profile, ParticipantAssignment? Assignment, string? UnassignedReason, bool PlanStale);
 public sealed record GenerateTripPlanResponse(string PlanId, long BasedOnRevision, CarpoolPlanResponse Plan);
 public sealed record CurrentRevisionResponse(long Revision);
+
+public enum TripLocationProvenance
+{
+    UserProvided,
+    MapboxSearchBoxTemporary,
+    MapboxGeocodingPermanent
+}
+
+public sealed record TripLocation
+{
+    public required string Label { get; init; }
+    public double Latitude { get; init; }
+    public double Longitude { get; init; }
+    public TripLocationProvenance? Provenance { get; init; }
+
+    public PlanLocation ToPlanLocation() => new() { Label = Label, Latitude = Latitude, Longitude = Longitude };
+
+    public IEnumerable<ValidationResult> Validate(string path)
+    {
+        if (Provenance is null)
+            yield return new ValidationResult("Location provenance is required.", [$"{path}.provenance"]);
+        foreach (var error in PlanValidation.ValidateLocation(ToPlanLocation(), path)) yield return error;
+    }
+
+    public static IEnumerable<ValidationResult> Required(string path) =>
+        [new ValidationResult("Location is required.", [path])];
+}
+
+internal static class TripJson
+{
+    public static void Configure(JsonSerializerOptions options) =>
+        options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase, allowIntegerValues: false));
+}
 
 internal static class TripValidation
 {

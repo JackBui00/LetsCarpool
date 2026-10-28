@@ -8,7 +8,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 
-builder.Services.AddControllers();
+builder.Services.AddControllers().AddJsonOptions(options => TripJson.Configure(options.JsonSerializerOptions));
 builder.Services.AddSingleton<IDistanceProvider, HaversineDistanceProvider>();
 builder.Services.AddSingleton<CarpoolPlanner>();
 builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
