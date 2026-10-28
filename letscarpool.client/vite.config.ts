@@ -12,27 +12,35 @@ const baseFolder =
         ? `${env.APPDATA}/ASP.NET/https`
         : `${env.HOME}/.aspnet/https`;
 
+const useLocalHttpPreview = env.CARPOOL_LOCAL_HTTP_PREVIEW === '1';
+
 const certificateName = "letscarpool.client";
 const certFilePath = path.join(baseFolder, `${certificateName}.pem`);
 const keyFilePath = path.join(baseFolder, `${certificateName}.key`);
 
-if (!fs.existsSync(baseFolder)) {
-    fs.mkdirSync(baseFolder, { recursive: true });
-}
+if (!useLocalHttpPreview) {
+    if (!fs.existsSync(baseFolder)) {
+        fs.mkdirSync(baseFolder, { recursive: true });
+    }
 
-if (!fs.existsSync(certFilePath) || !fs.existsSync(keyFilePath)) {
-    if (0 !== child_process.spawnSync('dotnet', [
-        'dev-certs',
-        'https',
-        '--export-path',
-        certFilePath,
-        '--format',
-        'Pem',
-        '--no-password',
-    ], { stdio: 'inherit', }).status) {
-        throw new Error("Could not create certificate.");
+    if (!fs.existsSync(certFilePath) || !fs.existsSync(keyFilePath)) {
+        if (0 !== child_process.spawnSync('dotnet', [
+            'dev-certs',
+            'https',
+            '--export-path',
+            certFilePath,
+            '--format',
+            'Pem',
+            '--no-password',
+        ], { stdio: 'inherit', }).status) {
+            throw new Error("Could not create certificate.");
+        }
     }
 }
+
+const httpsOptions = useLocalHttpPreview
+    ? undefined
+    : { key: fs.readFileSync(keyFilePath), cert: fs.readFileSync(certFilePath) };
 
 const target = env.ASPNETCORE_HTTPS_PORT ? `https://localhost:${env.ASPNETCORE_HTTPS_PORT}` :
     env.ASPNETCORE_URLS ? env.ASPNETCORE_URLS.split(';')[0] : 'https://localhost:7189';
@@ -46,6 +54,7 @@ export default defineConfig({
         }
     },
     server: {
+        ...(useLocalHttpPreview ? { host: '127.0.0.1' } : {}),
         proxy: {
             '^/weatherforecast': {
                 target,
@@ -57,9 +66,6 @@ export default defineConfig({
             }
         },
         port: 57082,
-        https: {
-            key: fs.readFileSync(keyFilePath),
-            cert: fs.readFileSync(certFilePath),
-        }
+        ...(httpsOptions ? { https: httpsOptions } : {})
     }
 })

@@ -1,7 +1,11 @@
-import { useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
+import { PlanRequestRevision, runPlanRequest } from './planRequestLifecycle.ts';
+import { demoPlace, enabledGoogleMapsKey, hasGoogleMapsKey, isPlaceResolved, isPlanReady, unresolvedPlace, type PlaceSelection } from './places/placeSelection';
+import { LocationPicker } from './places/LocationPicker';
+import { TripMap } from './places/TripMap';
 import './App.css';
 
-type Place = { label: string; latitude: number; longitude: number };
+type Place = PlaceSelection;
 type Participant = { id: string; name: string; origin: Place; passengerSeats: number; canMeet: boolean };
 type Stop = { participantId: string | null; label: string; latitude: number; longitude: number; kind: 'pickup' | 'rendezvous' | 'destination' };
 type TravelLocation = { participantId: string; label: string; latitude: number; longitude: number; kind: 'origin' | 'rendezvous' };
@@ -12,11 +16,12 @@ type PlanResponse = { alternatives: Alternative[]; searchOperations: number; sea
 type ProblemDetails = { type?: string; title?: string; detail?: string; status?: number; message?: string; errors?: Record<string, string[]> };
 
 const seed: Participant[] = [
-    { id: 'alex', name: 'Alex', origin: { label: 'Mission Dolores Park', latitude: 37.7596, longitude: -122.4269 }, passengerSeats: 3, canMeet: true },
-    { id: 'sam', name: 'Sam', origin: { label: 'Painted Ladies', latitude: 37.7763, longitude: -122.4329 }, passengerSeats: 0, canMeet: true },
-    { id: 'jordan', name: 'Jordan', origin: { label: 'Ferry Building', latitude: 37.7955, longitude: -122.3937 }, passengerSeats: 0, canMeet: false },
+    { id: 'alex', name: 'Alex', origin: demoPlace('Mission Dolores Park', 37.7596, -122.4269), passengerSeats: 3, canMeet: true },
+    { id: 'sam', name: 'Sam', origin: demoPlace('Painted Ladies', 37.7763, -122.4329), passengerSeats: 0, canMeet: true },
+    { id: 'jordan', name: 'Jordan', origin: demoPlace('Ferry Building', 37.7955, -122.3937), passengerSeats: 0, canMeet: false },
 ];
-const initialDestination: Place = { label: 'Golden Gate Park', latitude: 37.7694, longitude: -122.4862 };
+const initialDestination: Place = demoPlace('Golden Gate Park', 37.7694, -122.4862);
+const mapsKey = enabledGoogleMapsKey(import.meta.env.VITE_GOOGLE_MAPS_ENABLED, import.meta.env.VITE_GOOGLE_MAPS_API_KEY);
 
 function App() {
     const [destination, setDestination] = useState(initialDestination);
@@ -25,12 +30,17 @@ function App() {
     const [result, setResult] = useState<PlanResponse | null>(null);
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
+    const planRevisions = useRef(new PlanRequestRevision());
 
-    function updatePlace(setter: (place: Place) => void, place: Place, key: keyof Place, value: string) {
-        setter({ ...place, [key]: key === 'label' ? value : Number(value) });
+    function invalidatePlan() {
+        planRevisions.current.invalidate();
+        setResult(null);
+        setError('');
+        setLoading(false);
     }
 
     function updateParticipant(id: string, change: Partial<Participant> | { origin: Partial<Place> }) {
+        invalidatePlan();
         setParticipants(current => current.map(person => person.id === id
             ? { ...person, ...change, origin: 'origin' in change ? { ...person.origin, ...change.origin } : person.origin }
             : person));
@@ -38,19 +48,22 @@ function App() {
 
     function addParticipant() {
         if (participants.length >= 6) return;
+        invalidatePlan();
         const id = `friend-${Date.now()}`;
-        setParticipants(current => [...current, { id, name: '', origin: { label: '', latitude: 37.77, longitude: -122.42 }, passengerSeats: 0, canMeet: false }]);
+        setParticipants(current => [...current, { id, name: '', origin: unresolvedPlace(''), passengerSeats: 0, canMeet: false }]);
     }
 
     async function planTrip(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
+        if (!isPlanReady(mapsKey, [destination, ...participants.map(person => person.origin)])) return;
         setError('');
         setResult(null);
         setLoading(true);
-        try {
+        const requestRevision = planRevisions.current.begin();
+        await runPlanRequest(planRevisions.current, requestRevision, async () => {
             const response = await fetch('/api/v1/carpool/plan', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ destination, participants, maxDetourMinutes }),
+                body: JSON.stringify({ destination: toApiPlace(destination), participants: participants.map(person => ({ ...person, origin: toApiPlace(person.origin) })), maxDetourMinutes }),
             });
             const payload = await response.json().catch(() => null) as PlanResponse | ProblemDetails | null;
             if (!response.ok) {
@@ -60,32 +73,41 @@ function App() {
                 throw new Error(details || (payload && 'detail' in payload && payload.detail) || (payload && 'message' in payload && payload.message) || (payload && 'title' in payload && payload.title) || `Planner request failed (${response.status}).`);
             }
             if (!payload || !('alternatives' in payload)) throw new Error('The planner response was missing its alternatives. Please try again.');
-            setResult(payload);
-        } catch (reason) {
-            setError(reason instanceof Error ? reason.message : 'Could not reach the trip planner. Check the connection and try again.');
-        } finally {
-            setLoading(false);
-        }
+            return payload;
+        }, {
+            onSuccess: setResult,
+            onError: reason => setError(reason instanceof Error ? reason.message : 'Could not reach the trip planner. Check the connection and try again.'),
+            onFinally: () => setLoading(false),
+        });
     }
 
-    const patchDestination = (key: keyof Place, value: string) => updatePlace(setDestination, destination, key, value);
+    const patchDestination = (place: Place) => {
+        invalidatePlan();
+        setDestination(place);
+    };
+    const planReady = isPlanReady(mapsKey, [destination, ...participants.map(person => person.origin)]);
     return <main className="app-shell">
         <header className="topbar"><a className="brand" href="#top" aria-label="Gather home"><span className="brand-mark" aria-hidden="true">g</span> gather<span className="brand-dot">.</span></a><span className="session-badge"><span /> Unsaved planning session</span></header>
         <section className="intro" id="top"><p className="eyebrow">LESS COORDINATION. MORE TOGETHER.</p><h1>Getting there is<br /><em>part of the plan.</em></h1><p className="intro-copy">Bring your crew together. Compare picking each other up with meeting along the way.</p></section>
         <form onSubmit={planTrip}>
+            {!hasGoogleMapsKey(mapsKey) && <div className="setup-notice" role="status"><strong>Location search setup required</strong><span>Add <code>VITE_GOOGLE_MAPS_API_KEY</code> to an ignored local <code>.env.local</code> file, restricted to your localhost referrer and the Maps JavaScript API. Until then, the prefilled locations are demo data and cannot be submitted. No key is stored in this project.</span></div>}
+            <div className="planner-layout">
+            <div className="planner-form">
             <section className="panel destination-panel" aria-labelledby="destination-title"><div className="section-heading"><span className="step">01</span><div><h2 id="destination-title">Where are you all headed?</h2><p>One shared destination keeps everyone on the same trip.</p></div></div>
-                <div className="field-grid destination-fields"><label>Destination name<input required value={destination.label} onChange={e => patchDestination('label', e.target.value)} placeholder="Place or venue" /></label><label>Latitude<input required type="number" step="any" value={destination.latitude} onChange={e => patchDestination('latitude', e.target.value)} /></label><label>Longitude<input required type="number" step="any" value={destination.longitude} onChange={e => patchDestination('longitude', e.target.value)} /></label></div>
-                <p className="field-note">Add coordinates for each place. Addresses are not looked up automatically yet.</p>
+                <LocationPicker label="Destination address or venue" value={destination} apiKey={mapsKey} onEdit={patchDestination} onResolved={place => { invalidatePlan(); setDestination(place); }} />
             </section>
             <section className="panel people-panel" aria-labelledby="people-title"><div className="section-heading"><span className="step">02</span><div><h2 id="people-title">Who's coming along?</h2><p>Add your friends and where they'll start from. Up to 6 people.</p></div><span className="people-count">{participants.length} of 6</span></div>
-                <div className="people-list">{participants.map((person, index) => <article className="person-card" key={person.id}><div className="person-head"><span className="person-number">{String(index + 1).padStart(2, '0')}</span><label className="name-field">Name<input required value={person.name} onChange={e => updateParticipant(person.id, { name: e.target.value })} placeholder="Friend's name" /></label><button className="remove-button" type="button" aria-label={`Remove ${person.name || 'participant'}`} onClick={() => setParticipants(current => current.filter(p => p.id !== person.id))} disabled={participants.length <= 1}>Remove</button></div>
-                    <div className="field-grid origin-fields"><label>Starting place<input required value={person.origin.label} onChange={e => updateParticipant(person.id, { origin: { label: e.target.value } })} placeholder="Neighborhood, venue, or address" /></label><label>Latitude<input required type="number" step="any" value={person.origin.latitude} onChange={e => updateParticipant(person.id, { origin: { latitude: Number(e.target.value) } })} /></label><label>Longitude<input required type="number" step="any" value={person.origin.longitude} onChange={e => updateParticipant(person.id, { origin: { longitude: Number(e.target.value) } })} /></label></div>
+                <div className="people-list">{participants.map((person, index) => <article className="person-card" key={person.id}><div className="person-head"><span className="person-number">{String(index + 1).padStart(2, '0')}</span><label className="name-field">Name<input required value={person.name} onChange={e => updateParticipant(person.id, { name: e.target.value })} placeholder="Friend's name" /></label><button className="remove-button" type="button" aria-label={`Remove ${person.name || 'participant'}`} onClick={() => { invalidatePlan(); setParticipants(current => current.filter(p => p.id !== person.id)); }} disabled={participants.length <= 1}>Remove</button></div>
+                    <LocationPicker label={`${person.name || 'Participant'} starting address or venue`} value={person.origin} apiKey={mapsKey} onEdit={place => updateParticipant(person.id, { origin: place })} onResolved={place => updateParticipant(person.id, { origin: place })} />
                     <div className="person-options"><label className="seat-control">Passenger seats <input aria-label={`Passenger seats offered by ${person.name || 'participant'}`} type="number" min="0" max="8" value={person.passengerSeats} onChange={e => updateParticipant(person.id, { passengerSeats: Math.min(8, Math.max(0, Number(e.target.value))) })} /></label><span className="seat-help">Seats available for friends, driver not included</span><label className="check-control"><input type="checkbox" checked={person.canMeet} onChange={e => updateParticipant(person.id, { canMeet: e.target.checked })} /><span>I'm okay traveling to meet my driver</span></label></div>
                 </article>)}</div>
                 <button className="add-button" type="button" onClick={addParticipant} disabled={participants.length >= 6}><span aria-hidden="true">+</span> {participants.length >= 6 ? 'Maximum group size reached' : 'Add a friend'}</button>
             </section>
-            <section className="panel preferences-panel" aria-labelledby="preferences-title"><div className="section-heading"><span className="step">03</span><div><h2 id="preferences-title">Set the ride preferences</h2><p>Limit extra estimated time on each driver's vehicle route.</p></div></div><label className="detour-control">Maximum extra estimated vehicle time per driver <span className="range-value">{maxDetourMinutes} min</span><input type="range" min="0" max="1440" step="5" value={maxDetourMinutes} onChange={e => setMaxDetourMinutes(Number(e.target.value))} /><span className="range-ends"><span>No extra time</span><span>24 hours</span></span></label><p className="field-note detour-note">Measured beyond the driver's direct origin-to-destination estimate. Includes the driver's route through pickups or a meetup; excludes riders' independent travel to rendezvous points.</p></section>
-            <div className="submit-row"><p>Compare shared pickup routes and meeting points.</p><button className="primary-button" type="submit" disabled={loading || participants.length === 0}>{loading ? <><span className="spinner" /> Finding options…</> : <>Find our options <span aria-hidden="true">→</span></>}</button></div>
+            </div>
+            <TripMap apiKey={mapsKey} locations={[{ id: 'destination', label: destination.label, role: 'Destination', place: destination }, ...participants.map((person, index) => ({ id: person.id, label: `${index + 1}. ${person.name || 'Participant'}`, role: 'Participant origin' as const, place: person.origin }))]} />
+            </div>
+            <section className="panel preferences-panel" aria-labelledby="preferences-title"><div className="section-heading"><span className="step">03</span><div><h2 id="preferences-title">Set the ride preferences</h2><p>Limit extra estimated time on each driver's vehicle route.</p></div></div><label className="detour-control">Maximum extra estimated vehicle time per driver <span className="range-value">{maxDetourMinutes} min</span><input type="range" min="0" max="1440" step="5" value={maxDetourMinutes} onChange={e => { invalidatePlan(); setMaxDetourMinutes(Number(e.target.value)); }} /><span className="range-ends"><span>No extra time</span><span>24 hours</span></span></label><p className="field-note detour-note">Measured beyond the driver's direct origin-to-destination estimate. Includes the driver's route through pickups or a meetup; excludes riders' independent travel to rendezvous points.</p></section>
+            <div className="submit-row"><p>{planReady ? 'Compare shared pickup routes and meeting points.' : !hasGoogleMapsKey(mapsKey) ? 'Set up location search to resolve demo places and plan.' : 'Choose a search result for every location before planning.'}</p><button className="primary-button" type="submit" disabled={loading || !planReady}>{loading ? <><span className="spinner" /> Finding options…</> : <>Find our options <span aria-hidden="true">→</span></>}</button></div>
         </form>
         {error && <div className="notice error-notice" role="alert"><strong>We couldn't plan this trip.</strong><span>{error}</span></div>}
         {result && <Results response={result} participants={participants} />}
@@ -125,4 +147,8 @@ function formatLabel(value: string) { return value.replace(/([a-z])([A-Z])/g, '$
 function formatModeAssumption(value: string) { return value === 'unspecified' ? 'mode unspecified' : `${formatLabel(value)} mode`; }
 function formatOptimality(value: string) { return value === 'exact-within-limit' ? 'Exact among listed pickup and meetup strategies (up to 6 people)' : formatLabel(value); }
 function formatDistance(meters: number) { return meters >= 1000 ? `${(meters / 1000).toFixed(1)} km` : `${Math.round(meters)} m`; }
+function toApiPlace(place: Place) {
+    if (!isPlaceResolved(place)) throw new Error('Choose a location search result before planning this trip.');
+    return { label: place.label, latitude: place.latitude!, longitude: place.longitude! };
+}
 export default App;
