@@ -159,26 +159,28 @@ test('participant assignment role is read from the response field, never inferre
     assert.equal(readAssignmentRole(null), null);
 });
 
-test('trip location contract round-trips required locationSource and rejects missing or unknown values', () => {
-    const destination = { label: 'Lake Merritt', latitude: 37.8, longitude: -122.26, locationSource: 'userProvided' };
+test('trip location contract round-trips required locationProvenance and rejects missing or unknown values', () => {
+    const destination = { label: 'Lake Merritt', latitude: 37.8, longitude: -122.26, locationProvenance: 'userProvided' };
     const summary = { tripId: 'trip-a', name: 'Lake day', arrivalAt: '2027-07-12T11:00:00-07:00', timeZoneId: 'America/Los_Angeles', destination, inviteExpiresAt: '2027-07-19T18:00:00Z' };
     assert.deepEqual(readLocationDto(destination), destination);
-    assert.equal(readTripSummary(summary)?.destination.locationSource, 'userProvided');
-    assert.equal(readLocationDto({ ...destination, locationSource: undefined }), null);
-    assert.equal(readLocationDto({ ...destination, locationSource: 'mapbox-searchbox' }), null);
-    assert.equal(readTripSummary({ ...summary, destination: { ...destination, locationSource: 'unknown' } }), null);
+    assert.equal(readTripSummary(summary)?.destination.locationProvenance, 'userProvided');
+    assert.equal(readLocationDto({ ...destination, locationProvenance: undefined }), null);
+    assert.equal(readLocationDto({ ...destination, locationProvenance: 'mapbox-searchbox' }), null);
+    assert.equal(readTripSummary({ ...summary, destination: { ...destination, locationProvenance: 'unknown' } }), null);
 });
 
-test('temporary Search Box results cannot be saved to trips but user pins and permanent results preserve locationSource', () => {
+test('temporary Search Box results cannot be saved to trips but user pins and permanent results preserve locationProvenance', () => {
     const temporary = { label: 'Search result', latitude: 37.7, longitude: -122.4, placeId: 'mbx-1', source: 'mapbox-searchbox-temporary' };
     const pin = { label: 'My meetup point', latitude: 37.7, longitude: -122.4, placeId: null, source: 'user-provided' };
     const permanent = { label: 'Stored address', latitude: 37.7, longitude: -122.4, placeId: null, source: 'mapbox-geocoding-permanent' };
     assert.equal(selectedLocation(temporary), null);
     assert.equal(selectedTripLocation(temporary), null);
+    assert.deepEqual(selectedLocation(pin), { label: 'My meetup point', latitude: 37.7, longitude: -122.4 });
+    assert.deepEqual(selectedLocation(permanent), { label: 'Stored address', latitude: 37.7, longitude: -122.4 });
     assert.equal(selectedTripLocation(demoPlace('Sample', 37.7, -122.4)), null);
     assert.equal(selectedTripLocation(editPlaceLabel('Unresolved')), null);
-    assert.deepEqual(selectedTripLocation(pin), { label: 'My meetup point', latitude: 37.7, longitude: -122.4, locationSource: 'userProvided' });
-    assert.deepEqual(selectedTripLocation(permanent)?.locationSource, 'mapboxGeocodingPermanent');
+    assert.deepEqual(selectedTripLocation(pin), { label: 'My meetup point', latitude: 37.7, longitude: -122.4, locationProvenance: 'userProvided' });
+    assert.deepEqual(selectedTripLocation(permanent)?.locationProvenance, 'mapboxGeocodingPermanent');
 });
 
 test('participant profile edits omit consent and retain only a genuine resolved trip location', () => {
@@ -187,7 +189,7 @@ test('participant profile edits omit consent and retain only a genuine resolved 
         canDrive: true, passengerSeats: 2, canMeet: true, maxDetourMinutes: 45,
     });
     assert.deepEqual(body, {
-        expectedRevision: 4, name: 'Sam', origin: { label: 'Meet point', latitude: 37.7, longitude: -122.4, locationSource: 'userProvided' },
+        expectedRevision: 4, name: 'Sam', origin: { label: 'Meet point', latitude: 37.7, longitude: -122.4, locationProvenance: 'userProvided' },
         canDrive: true, passengerSeats: 2, canMeet: true, maxDetourMinutes: 45,
     });
     assert.equal(Object.hasOwn(body, 'locationDisclosureAccepted'), false);
@@ -216,7 +218,7 @@ test('join attempt snapshots reuse the same UUID/body for the same trip and invi
     const key = await joinAttemptStorageKey('trip-a', 'invite-secret-a');
     const attempt = {
         idempotencyKey: '0d111111-1111-4111-8111-111111111111',
-        body: { name: 'Sam', origin: { label: 'Selected place', latitude: 37.7, longitude: -122.4, locationSource: 'userProvided' }, canDrive: false, passengerSeats: 0, canMeet: true, maxDetourMinutes: 30, locationDisclosureAccepted: true },
+        body: { name: 'Sam', origin: { label: 'Selected place', latitude: 37.7, longitude: -122.4, locationProvenance: 'userProvided' }, canDrive: false, passengerSeats: 0, canMeet: true, maxDetourMinutes: 30, locationDisclosureAccepted: true },
         status: 'retryable',
     };
     assert.equal(writeJoinAttempt(storage, key, attempt), true);
@@ -245,7 +247,7 @@ test('join_already_processed remains uncertain without creating a replacement UU
     const key = await joinAttemptStorageKey('trip-a', 'invite-secret-a');
     const attempt = {
         idempotencyKey: '0d111111-1111-4111-8111-111111111111',
-        body: { name: 'Sam', origin: { label: 'Selected place', latitude: 37.7, longitude: -122.4, locationSource: 'userProvided' }, canDrive: false, passengerSeats: 0, canMeet: true, maxDetourMinutes: 30, locationDisclosureAccepted: true },
+        body: { name: 'Sam', origin: { label: 'Selected place', latitude: 37.7, longitude: -122.4, locationProvenance: 'userProvided' }, canDrive: false, passengerSeats: 0, canMeet: true, maxDetourMinutes: 30, locationDisclosureAccepted: true },
         status: 'uncertain', reason: 'replay',
     };
     assert.equal(classifyJoinFailure(409, 'join_already_processed').mayHaveSucceeded, true);

@@ -1,5 +1,5 @@
 export type PlaceSource = 'demo' | 'mapbox-searchbox-temporary' | 'mapbox-geocoding-permanent' | 'user-provided' | 'unresolved';
-export type LocationSource = 'userProvided' | 'mapboxGeocodingPermanent';
+export type LocationProvenance = 'userProvided' | 'mapboxGeocodingPermanent';
 
 export type PlaceSelection = {
     label: string;
@@ -38,7 +38,7 @@ export function isPlanReady(token: string | undefined, places: PlaceSelection[])
         isPlaceResolved(place) && (place.source === 'user-provided' || place.source === 'mapbox-geocoding-permanent'));
 }
 
-export function locationSource(place: PlaceSelection): LocationSource | null {
+export function locationProvenance(place: PlaceSelection): LocationProvenance | null {
     if (place.source === 'user-provided') return 'userProvided';
     if (place.source === 'mapbox-geocoding-permanent') return 'mapboxGeocodingPermanent';
     return null;

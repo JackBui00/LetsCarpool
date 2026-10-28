@@ -8,6 +8,7 @@ import { isPlanStale, readGeneratedPlan, readLocationDto, readRevision, readTrip
 import { useGuardedRequest } from './useGuardedRequest';
 import { isValidLocalTimeInZone, isValidTimeZone, isoWithZoneOffset, localInputInZone } from './dateTime';
 import { Notice, SectionTitle } from './TripUi';
+import { formatEstimatedMinutes } from './formatEstimates';
 
 const mapToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
 type Props = { tripId: string; navigate: (path: string) => void };
@@ -67,7 +68,7 @@ export function OrganizerTrip({ tripId, navigate }: Props) {
         if (draft.arrivalLocal !== localInputInZone(overview.trip.arrivalAt, overview.trip.timeZoneId) || draft.timeZoneId !== overview.trip.timeZoneId) fields.arrivalAt = isoWithZoneOffset(draft.arrivalLocal, draft.timeZoneId);
         if (draft.timeZoneId !== overview.trip.timeZoneId) fields.timeZoneId = draft.timeZoneId;
         const original = overview.trip.destination;
-        if (draft.destination.label !== original.label || draft.destination.latitude !== original.latitude || draft.destination.longitude !== original.longitude || draft.destination.source !== sourceForLocationSource(original.locationSource)) fields.destination = selectedTripLocation(draft.destination);
+        if (draft.destination.label !== original.label || draft.destination.latitude !== original.latitude || draft.destination.longitude !== original.longitude || draft.destination.source !== sourceForLocationProvenance(original.locationProvenance)) fields.destination = selectedTripLocation(draft.destination);
         if (Object.keys(fields).length === 0) { setDirty(false); return; }
         void request.run(() => tripApi<unknown>(`/${encodeURIComponent(tripId)}/organizer`, token, { method: 'PATCH', body: JSON.stringify({ expectedRevision: overview.revision, ...fields }) }), () => { setMessage('Trip details saved. Any previous plan was cleared.'); void loadOverview(); });
     }
@@ -191,7 +192,7 @@ export function OrganizerTrip({ tripId, navigate }: Props) {
 function PlanOptions({ plan, selectedStrategy, loading, onSelect }: { plan: GeneratedPlan; selectedStrategy: string; loading: boolean; onSelect: (strategy: string) => void }) {
     const alternatives = plan.plan.alternatives;
     return <div className="plan-card"><h3>{selectedStrategy ? `Selected: ${formatStrategy(selectedStrategy)}` : 'Draft plan · not selected'}</h3><p>Based on revision {plan.basedOnRevision}. Exact among supported pickup and rendezvous strategies within the search limit.</p>
-        {alternatives.length === 0 ? <p>No feasible assignment is available with the current responses and seats.</p> : alternatives.map(option => <article className="plan-card" key={option.strategy}><h3>{formatStrategy(option.strategy)} · {formatDistance(option.totalDistanceMeters ?? 0)} · {option.durationMinutes ?? 0} estimated min</h3>
+        {alternatives.length === 0 ? <p>No feasible assignment is available with the current responses and seats.</p> : alternatives.map(option => <article className="plan-card" key={option.strategy}><h3>{formatStrategy(option.strategy)} · {formatDistance(option.totalDistanceMeters ?? 0)} · {formatEstimatedMinutes(option.durationMinutes ?? 0)} estimated min</h3>
             {option.groups?.map((group, index) => <p key={index}><strong>{group.driver?.name ?? 'Driver'} drives</strong> · {(group.riders ?? []).map(rider => rider.name).filter(Boolean).join(', ') || 'driver only'}<br />{(group.stops ?? []).map(stop => `${stop.kind === 'destination' ? 'Destination' : stop.kind === 'rendezvous' ? 'Meetup' : 'Pickup'}: ${stop.label ?? 'stop'}`).join(' → ')}</p>)}
             {(option.unassigned ?? []).map(person => <p key={person.participantId}>Unassigned {person.participantId}: {person.reason}</p>)}
             {(option.warnings ?? []).map((warning, index) => <p key={index}>{warning}</p>)}
@@ -232,9 +233,9 @@ function isRotatedOrganizer(value: unknown): value is { organizerCapability: str
 }
 
 function dtoPlace(location: LocationDto): PlaceSelection {
-    return { label: location.label, latitude: location.latitude, longitude: location.longitude, placeId: null, source: sourceForLocationSource(location.locationSource) };
+    return { label: location.label, latitude: location.latitude, longitude: location.longitude, placeId: null, source: sourceForLocationProvenance(location.locationProvenance) };
 }
-function sourceForLocationSource(source: LocationDto['locationSource']): PlaceSelection['source'] { return source === 'userProvided' ? 'user-provided' : 'mapbox-geocoding-permanent'; }
+function sourceForLocationProvenance(source: LocationDto['locationProvenance']): PlaceSelection['source'] { return source === 'userProvided' ? 'user-provided' : 'mapbox-geocoding-permanent'; }
 function formatArrival(value: string, zone: string) { try { return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short', timeZone: zone }).format(new Date(value)); } catch { return value; } }
 function formatStrategy(strategy: string) { return strategy === 'rendezvous' ? 'Meet at a shared point' : strategy === 'pickup' ? 'Pick up along the way' : strategy; }
 function formatDistance(meters: number) { return meters >= 1000 ? `${(meters / 1000).toFixed(1)} km` : `${Math.round(meters)} m`; }

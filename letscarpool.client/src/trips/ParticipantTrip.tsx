@@ -9,6 +9,7 @@ import { readLocationDto, readRevision, readTripSummary, selectedTripLocation, t
 import { participantAssignmentState, readOwnAssignment, type OwnAssignment, type OwnTravelLeg } from './participantAssignment';
 import { useGuardedRequest } from './useGuardedRequest';
 import { Notice, SectionTitle } from './TripUi';
+import { formatEstimatedMinutes } from './formatEstimates';
 
 const mapToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
 type Props = { tripId: string; navigate: (path: string) => void };
@@ -108,9 +109,9 @@ function OwnAssignmentCard({ assignment, driver, riders, stops, independentTrave
         <p><strong>Your role:</strong> {assignment.role === 'driver' ? 'Driver' : 'Rider'}</p>
         <p><strong>Driver:</strong> {driver?.name ?? 'See your group details'}</p>
         <p><strong>Assigned companions:</strong> {riders.map(person => person.name).filter(Boolean).join(', ') || 'See your group details'}</p>
-        {totalDistanceMeters !== undefined && <p>Estimated group travel {formatDistance(totalDistanceMeters)} · {durationMinutes ?? '—'} estimated minutes.</p>}
+        {totalDistanceMeters !== undefined && <p>Estimated group travel {formatDistance(totalDistanceMeters)} · {durationMinutes === undefined ? '—' : formatEstimatedMinutes(durationMinutes)} estimated minutes.</p>}
         {stops.length > 0 && <ol className="assignment-stops">{stops.map((stop, index) => <li key={`${stop.kind}-${index}`}>{stop.kind === 'destination' ? 'Shared destination' : stop.kind === 'rendezvous' ? 'Meetup point' : 'Pickup'} · {stop.label ?? 'location details'}</li>)}</ol>}
-        {independentTravelLegs.map(leg => <p className="assignment-travel-leg" key={leg.participantId}><strong>Your independent travel estimate:</strong> {leg.from.label} to {leg.to.label} · {formatDistance(leg.distanceMeters)} · {leg.durationMinutes} estimated minutes. Travel mode is unspecified; this uses a straight-line estimate.</p>)}
+        {independentTravelLegs.map(leg => <p className="assignment-travel-leg" key={leg.participantId}><strong>Your independent travel estimate:</strong> {leg.from.label} to {leg.to.label} · {formatDistance(leg.distanceMeters)} · {formatEstimatedMinutes(leg.durationMinutes)} estimated minutes. Travel mode is unspecified; this uses a straight-line estimate.</p>)}
     </div>;
 }
 
@@ -145,7 +146,7 @@ function normalizeSelf(value: unknown, tripId: string): SelfView | null {
 }
 
 function locationToPlace(location: LocationDto): PlaceSelection {
-    const source: PlaceSelection['source'] = location.locationSource === 'userProvided' ? 'user-provided' : 'mapbox-geocoding-permanent';
+    const source: PlaceSelection['source'] = location.locationProvenance === 'userProvided' ? 'user-provided' : 'mapbox-geocoding-permanent';
     return { label: location.label, latitude: location.latitude, longitude: location.longitude, placeId: null, source };
 }
 
