@@ -126,4 +126,3 @@ function formatModeAssumption(value: string) { return value === 'unspecified' ? 
 function formatOptimality(value: string) { return value === 'exact-within-limit' ? 'Exact among listed pickup and meetup strategies (up to 6 people)' : formatLabel(value); }
 function formatDistance(meters: number) { return meters >= 1000 ? `${(meters / 1000).toFixed(1)} km` : `${Math.round(meters)} m`; }
 export default App;
-
