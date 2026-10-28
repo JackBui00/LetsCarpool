@@ -9,7 +9,7 @@ type TravelLeg = { participantId: string; from: TravelLocation; to: TravelLocati
 type Group = { driver: { id: string; name: string }; riders: Array<{ id: string; name: string }>; stops: Stop[]; independentTravelLegs: TravelLeg[]; vehicleDistanceMeters: number; independentTravelDistanceMeters: number; totalDistanceMeters: number; durationMinutes: number; driverDetourMinutes: number };
 type Alternative = { strategy: 'pickup' | 'rendezvous'; groups: Group[]; totalDistanceMeters: number; durationMinutes: number; unassigned: Array<{ participantId: string; reason: string }>; distanceSource: 'haversine-estimate'; optimality: 'exact-within-limit' | string; warnings: string[] };
 type PlanResponse = { alternatives: Alternative[]; searchOperations: number; searchOperationLimit: number };
-type ProblemDetails = { title?: string; detail?: string; message?: string; errors?: Record<string, string[]> };
+type ProblemDetails = { type?: string; title?: string; detail?: string; status?: number; message?: string; errors?: Record<string, string[]> };
 
 const seed: Participant[] = [
     { id: 'alex', name: 'Alex', origin: { label: 'Mission Dolores Park', latitude: 37.7596, longitude: -122.4269 }, passengerSeats: 3, canMeet: true },
@@ -57,7 +57,7 @@ function App() {
                 const details = payload && 'errors' in payload && payload.errors
                     ? Object.entries(payload.errors).flatMap(([field, messages]) => messages.map(message => `${field}: ${message}`)).join(' ')
                     : '';
-                throw new Error(details || (payload && 'message' in payload && payload.message) || (payload && 'detail' in payload && payload.detail) || (payload && 'title' in payload && payload.title) || `Planner request failed (${response.status}).`);
+                throw new Error(details || (payload && 'detail' in payload && payload.detail) || (payload && 'message' in payload && payload.message) || (payload && 'title' in payload && payload.title) || `Planner request failed (${response.status}).`);
             }
             if (!payload || !('alternatives' in payload)) throw new Error('The planner response was missing its alternatives. Please try again.');
             setResult(payload);
@@ -96,21 +96,34 @@ function App() {
 function Results({ response, participants }: { response: PlanResponse; participants: Participant[] }) {
     const alternatives = response.alternatives ?? [];
     const participantNames = new Map(participants.map(person => [person.id, person.name]));
-    return <section className="results" aria-live="polite" aria-labelledby="results-title"><div className="results-heading"><div><p className="eyebrow">YOUR CREW, CONNECTED</p><h2 id="results-title">Trip options</h2></div><span className="estimate-tag">Estimates only</span></div>
+    return <section className="results" aria-live="polite" aria-labelledby="results-title">
+        <div className="results-heading"><div><p className="eyebrow">YOUR CREW, CONNECTED</p><h2 id="results-title">Trip options</h2></div><span className="estimate-tag">Estimates only</span></div>
         <p className="results-objective">Options prioritize getting the most people to the shared destination, then compare total travel: vehicle routes plus independent rider legs.</p>
-        {alternatives.length === 0 ? <div className="notice empty-notice"><strong>No workable option found yet.</strong><span>Try adding a driver, offering more passenger seats, or allowing friends to meet at a pickup point.</span></div> : alternatives.map((alternative, index) => <article className="alternative-card" key={`${alternative.strategy}-${index}`}><div className="alternative-top"><div><span className="option-label">OPTION {index + 1}</span><h3>{formatStrategy(alternative.strategy)}</h3></div><div className="option-stats"><strong>{formatDistance(alternative.totalDistanceMeters)}</strong><span>estimated total travel</span><strong>{alternative.durationMinutes} min</strong><span>estimated time</span></div></div>
-            {alternative.groups.map((group, groupIndex) => <div className="group-block" key={`${group.driver.id}-${groupIndex}`}><h4><span className="car-icon" aria-hidden="true">↗</span> {group.driver.name} drives <small>{group.riders.length} {group.riders.length === 1 ? 'rider' : 'riders'}</small></h4><p className="group-riders"><strong>Riders:</strong> {group.riders.map(rider => rider.name).join(', ') || 'Driver only'}</p><div className="group-distance"><span>Vehicle travel <strong>{formatDistance(group.vehicleDistanceMeters)}</strong></span><span>Driver detour <strong>{group.driverDetourMinutes} min</strong></span><span>Independent rider travel <strong>{formatDistance(group.independentTravelDistanceMeters)}</strong></span><span>Total travel <strong>{formatDistance(group.totalDistanceMeters)}</strong></span><span>Estimated time <strong>{group.durationMinutes} min</strong></span></div><ol className="stop-list">{group.stops.map((stop, stopIndex) => { const stopPerson = stop.participantId ? participantNames.get(stop.participantId) ?? stop.participantId : 'Everyone'; return <li key={`${stop.participantId}-${stopIndex}`}><span className="stop-dot" /><span className="stop-person">{stop.kind === 'rendezvous' ? `Meetup at ${stopPerson}'s origin` : stopPerson}</span><span>{stop.label}</span><span className="stop-kind">{formatStopKind(stop.kind)}</span><span className="stop-location">{stop.latitude.toFixed(4)}, {stop.longitude.toFixed(4)}</span></li>; })}</ol>{group.independentTravelLegs.length > 0 && <div className="travel-legs"><h5>Independent trips to the meetup</h5>{group.independentTravelLegs.map((leg, legIndex) => <p key={`${leg.participantId}-${legIndex}`}><strong>{participantNames.get(leg.participantId) ?? leg.participantId}:</strong> {leg.from.label} → {leg.to.label} · {formatDistance(leg.distanceMeters)} · {leg.durationMinutes} min estimated · {leg.modeAssumption === 'unspecified' ? 'Mode unspecified' : formatLabel(leg.modeAssumption)}</p>)}</div>}</div>)}
+        {alternatives.length === 0 ? <div className="notice empty-notice"><strong>No workable option found yet.</strong><span>Try adding a driver, offering more passenger seats, or allowing friends to meet at a pickup point.</span></div> : alternatives.map((alternative, index) => <article className="alternative-card" key={alternative.strategy + "-" + index}>
+            <div className="alternative-top"><div><span className="option-label">OPTION {index + 1}</span><h3>{formatStrategy(alternative.strategy)}</h3></div><div className="option-stats"><strong>{formatDistance(alternative.totalDistanceMeters)}</strong><span>Estimated total travel</span><strong>{alternative.durationMinutes} min</strong><span>Estimated time</span></div></div>
+            {alternative.groups.map((group, groupIndex) => <div className="group-block" key={group.driver.id + "-" + groupIndex}>
+                <h4><span className="car-icon" aria-hidden="true">↗</span> {group.driver.name} drives <small>{group.riders.length} {group.riders.length === 1 ? "rider" : "riders"}</small></h4>
+                <p className="group-riders"><strong>Riders:</strong> {group.riders.map(rider => rider.name).join(", ") || "Driver only"}</p>
+                <div className="group-distance"><span>Vehicle travel <strong>{formatDistance(group.vehicleDistanceMeters)}</strong></span><span>Driver detour <strong>{group.driverDetourMinutes} min</strong></span><span>Independent rider travel <strong>{formatDistance(group.independentTravelDistanceMeters)}</strong></span><span>Total travel <strong>{formatDistance(group.totalDistanceMeters)}</strong></span><span>Estimated time <strong>{group.durationMinutes} min</strong></span></div>
+                <ol className="stop-list">{group.stops.map((stop, stopIndex) => {
+                    const stopPerson = stop.participantId ? participantNames.get(stop.participantId) ?? stop.participantId : null;
+                    const heading = stop.kind === "rendezvous" ? "Meetup at " + (stopPerson ?? "selected origin") + "'s origin" : stop.kind === "destination" ? "Shared destination" : stopPerson ?? "Pickup stop";
+                    return <li key={(stop.participantId ?? stop.kind) + "-" + stopIndex}><span className="stop-dot" /><span className="stop-person">{heading}</span><span>{stop.label}</span><span className="stop-kind">{formatStopKind(stop.kind)}</span><span className="stop-location">{stop.latitude.toFixed(4)}, {stop.longitude.toFixed(4)}</span></li>;
+                })}</ol>
+                {group.independentTravelLegs.length > 0 && <div className="travel-legs"><h5>Independent trips to the meetup</h5>{group.independentTravelLegs.map((leg, legIndex) => <p key={leg.participantId + "-" + legIndex}><strong>{participantNames.get(leg.participantId) ?? leg.participantId}:</strong> {leg.from.label} → {leg.to.label} · estimated distance {formatDistance(leg.distanceMeters)} · estimated {leg.durationMinutes} min ({formatModeAssumption(leg.modeAssumption)}; 40 km/h Haversine estimate)</p>)}</div>}
+            </div>)}
             {alternative.unassigned.length > 0 && <div className="unassigned"><h4>Needs another plan</h4>{alternative.unassigned.map(person => <p key={person.participantId}><strong>{participantNames.get(person.participantId) ?? person.participantId}</strong> · {person.reason}</p>)}</div>}
-            <p className="method-note">{formatLabel(alternative.distanceSource)} · {formatOptimality(alternative.optimality)} · {response.searchOperations.toLocaleString()} of {response.searchOperationLimit.toLocaleString()} search operations · Mixed per-group strategies are not searched.</p>
-            {alternative.warnings?.map((warning, i) => <p className="warning" key={i}>{warning}</p>)}
+            <p className="method-note">{formatLabel(alternative.distanceSource)} · {formatOptimality(alternative.optimality)} · Mixed per-group strategies are not searched. Search operations: {response.searchOperations.toLocaleString()} / {response.searchOperationLimit.toLocaleString()}.</p>
+            {alternative.warnings?.map((warning, warningIndex) => <p className="warning" key={warningIndex}>{warning}</p>)}
         </article>)}
         <p className="results-disclaimer">Distances are straight-line estimates, not road routes. Durations sum leg estimates at 40 km/h; traffic and turn-by-turn navigation are not included. Arrival deadlines and windows are not enforced.</p>
     </section>;
 }
-
 function formatStrategy(value: string) { return value === 'rendezvous' ? 'Meet along the way' : value === 'pickup' ? 'Pick up along the way' : formatLabel(value); }
 function formatStopKind(value: string) { return value === 'rendezvous' ? 'Meetup point' : value === 'destination' ? 'Shared destination' : formatLabel(value); }
 function formatLabel(value: string) { return value.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[-_]/g, ' ').replace(/^./, letter => letter.toUpperCase()); }
+function formatModeAssumption(value: string) { return value === 'unspecified' ? 'mode unspecified' : `${formatLabel(value)} mode`; }
 function formatOptimality(value: string) { return value === 'exact-within-limit' ? 'Exact among listed pickup and meetup strategies (up to 6 people)' : formatLabel(value); }
 function formatDistance(meters: number) { return meters >= 1000 ? `${(meters / 1000).toFixed(1)} km` : `${Math.round(meters)} m`; }
 export default App;
+
