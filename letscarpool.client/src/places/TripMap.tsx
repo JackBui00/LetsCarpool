@@ -1,76 +1,95 @@
 import { useEffect, useRef, useState } from 'react';
-import { loadGoogleMaps, type Coordinate, type PlaceSelection } from './placeSelection';
+import type { Map as MapboxMap, MapMouseEvent, Marker as MapboxMarker } from 'mapbox-gl';
+import 'mapbox-gl/dist/mapbox-gl.css';
+import type { PlaceSelection } from './placeSelection';
 
 type MarkerLocation = { id: string; label: string; role: 'Destination' | 'Participant origin'; place: PlaceSelection };
-type GoogleMapInstance = { fitBounds: (bounds: unknown, padding: number) => void; setCenter: (center: Coordinate) => void };
-type MapsLibrary = { Map: new (node: HTMLElement, options: { center: Coordinate; zoom: number; mapId: string; mapTypeControl: boolean; streetViewControl: boolean; fullscreenControl: boolean }) => GoogleMapInstance };
-type MarkerLibrary = { AdvancedMarkerElement: new (options: { map: GoogleMapInstance; position: Coordinate; title: string; content: HTMLElement }) => { map: GoogleMapInstance | null } };
+type Props = { token?: string; locations: MarkerLocation[]; selecting?: { label: string; role: 'Destination' | 'Participant origin' } | null; onPinSelect?: (location: { latitude: number; longitude: number }) => void };
 
-export function TripMap({ apiKey, locations }: { apiKey?: string; locations: MarkerLocation[] }) {
+export function TripMap({ token, locations, selecting, onPinSelect }: Props) {
     const mapNode = useRef<HTMLDivElement>(null);
-    const map = useRef<GoogleMapInstance | null>(null);
-    const markers = useRef<Array<{ map: GoogleMapInstance | null }>>([]);
+    const map = useRef<MapboxMap | null>(null);
+    const api = useRef<typeof import('mapbox-gl').default | null>(null);
+    const markers = useRef<MapboxMarker[]>([]);
     const [error, setError] = useState(false);
     const [mapReady, setMapReady] = useState(false);
     const resolved = locations.filter(item => item.place.latitude !== null && item.place.longitude !== null);
     const markerPayload = JSON.stringify(resolved.map(item => ({ ...item, place: { ...item.place, latitude: item.place.latitude!, longitude: item.place.longitude! } })));
 
     useEffect(() => {
-        if (!apiKey?.trim() || !mapNode.current) return;
+        if (!token?.trim() || !mapNode.current) return;
         let active = true;
-        loadGoogleMaps(apiKey).then(async maps => {
+        let resizeObserver: ResizeObserver | undefined;
+        void import('mapbox-gl').then(mapboxgl => {
             if (!active || !mapNode.current) return;
-            try {
-                const library = await maps.importLibrary('maps') as MapsLibrary;
-                if (!active || !mapNode.current) return;
-                map.current ??= new library.Map(mapNode.current, {
-                    center: { lat: 37.7694, lng: -122.4262 }, zoom: 12,
-                    mapId: 'DEMO_MAP_ID', mapTypeControl: false, streetViewControl: false,
-                    fullscreenControl: false,
-                });
-                setMapReady(true);
-            } catch { if (active) setError(true); }
+            mapboxgl.default.accessToken = token;
+            api.current = mapboxgl.default;
+            const instance = new mapboxgl.default.Map({
+                container: mapNode.current,
+                style: 'mapbox://styles/mapbox/streets-v12',
+                center: [-122.42, 37.77],
+                zoom: 11,
+                attributionControl: true,
+                cooperativeGestures: true,
+            });
+            map.current = instance;
+            instance.once('load', () => { if (active) setMapReady(true); });
+            instance.on('error', () => { if (active) setError(true); });
+            resizeObserver = new ResizeObserver(() => instance.resize());
+            resizeObserver.observe(mapNode.current);
         }).catch(() => { if (active) setError(true); });
-        return () => { active = false; };
-    }, [apiKey]);
+        return () => {
+            active = false;
+            resizeObserver?.disconnect();
+            markers.current.forEach(marker => marker.remove());
+            markers.current = [];
+            map.current?.remove();
+            map.current = null;
+            api.current = null;
+            setMapReady(false);
+        };
+    }, [token]);
 
     useEffect(() => {
-        let active = true;
         const currentMap = map.current;
+        if (!currentMap || !mapReady) return;
+        markers.current.forEach(marker => marker.remove());
+        markers.current = [];
         const markerLocations = JSON.parse(markerPayload) as Array<MarkerLocation & { place: PlaceSelection & { latitude: number; longitude: number } }>;
-        if (!currentMap || markerLocations.length === 0) return;
-        loadGoogleMaps(apiKey).then(async maps => {
-            const library = await maps.importLibrary('marker') as MarkerLibrary;
-            if (!active) return;
-            markers.current.forEach(marker => marker.map = null);
-            markers.current = markerLocations.map((item, index) => {
-                const marker = new library.AdvancedMarkerElement({
-                    map: currentMap,
-                    position: { lat: item.place.latitude, lng: item.place.longitude },
-                    title: `${item.role}: ${item.label}`,
-                    content: markerContent(item.role, index),
-                });
+        const mapboxgl = api.current;
+        if (!mapboxgl) return;
+        markers.current = markerLocations.map((item, index) => {
+                const node = document.createElement('span');
+                node.className = item.role === 'Destination' ? 'map-marker destination-marker' : 'map-marker participant-marker';
+                node.textContent = item.role === 'Destination' ? 'D' : String(index + 1);
+                node.setAttribute('aria-label', `${item.role}: ${item.label}`);
+                const marker = new mapboxgl.Marker({ element: node, anchor: 'bottom' })
+                    .setLngLat([item.place.longitude, item.place.latitude])
+                    .setPopup(new mapboxgl.Popup({ offset: 18 }).setText(`${item.role}: ${item.label}`))
+                    .addTo(currentMap);
                 return marker;
             });
-            const bounds = new maps.LatLngBounds();
-            markerLocations.forEach(item => bounds.extend({ lat: item.place.latitude, lng: item.place.longitude }));
-            if (markerLocations.length > 1) currentMap.fitBounds(bounds, 42);
-            else currentMap.setCenter(bounds.getCenter());
-        }).catch(() => { if (active) setError(true); });
-        return () => { active = false; };
-    }, [apiKey, markerPayload, mapReady]);
+        if (markerLocations.length === 1) currentMap.easeTo({ center: [markerLocations[0].place.longitude, markerLocations[0].place.latitude], zoom: 13 });
+        else if (markerLocations.length > 1) {
+                const bounds = new mapboxgl.LngLatBounds();
+                markerLocations.forEach(item => bounds.extend([item.place.longitude, item.place.latitude]));
+                currentMap.fitBounds(bounds, { padding: 42, maxZoom: 14, duration: 0 });
+        }
+    }, [markerPayload, mapReady]);
+
+    useEffect(() => {
+        const currentMap = map.current;
+        if (!currentMap || !mapReady || !selecting || !onPinSelect) return;
+        currentMap.getCanvas().style.cursor = 'crosshair';
+        const choose = (event: MapMouseEvent) => onPinSelect({ longitude: event.lngLat.lng, latitude: event.lngLat.lat });
+        currentMap.on('click', choose);
+        return () => { currentMap.off('click', choose); currentMap.getCanvas().style.cursor = ''; };
+    }, [mapReady, selecting, onPinSelect]);
 
     return <aside className="map-panel" aria-label="Trip location map">
-        <div className="map-heading"><div><strong>Trip locations</strong><span>Distinct pins show selected origins and the destination.</span></div><details className="map-legend"><summary>Legend</summary><p><span className="legend-pin destination-pin">D</span> Destination</p><p><span className="legend-pin participant-pin">1</span> Participant origins</p></details></div>
-        {!apiKey?.trim() ? <div className="map-placeholder"><strong>Map preview setup needed</strong><span>Add a restricted Google Maps key to enable the map and address search. Demo pin data is not a live map.</span><small>Google Maps attribution appears here when enabled.</small></div> : error ? <div className="map-placeholder" role="status"><strong>Google Maps is unavailable</strong><span>Check network access, key restrictions, and Maps JavaScript API access.</span></div> : <div ref={mapNode} className="google-map" aria-label={`${resolved.length} selected trip locations`} />}
-        <div className="map-attribution">Map data © Google</div>
+        <div className="map-heading"><div><strong>Trip locations</strong><span>Distinct pins identify selected origins and the shared destination.</span></div><details className="map-legend"><summary>Legend</summary><p><span className="legend-pin destination-pin">D</span> Destination</p><p><span className="legend-pin participant-pin">1</span> Participant origins</p></details></div>
+        {!token?.trim() ? <div className="map-placeholder"><strong>Map preview setup needed</strong><span>Add a restricted local Mapbox public token to enable the map and address search. Demo pin data is not a live map.</span></div> : error ? <div className="map-placeholder" role="status"><strong>Mapbox map is unavailable</strong><span>Check local network access, token restrictions, and map style access.</span></div> : <div ref={mapNode} className="mapbox-map" aria-label={`${resolved.length} selected trip locations`} />}
+        {selecting && <p className="map-pick-hint" role="status">Click the map to place the {selecting.role.toLowerCase()}: {selecting.label}</p>}
+        <div className="map-attribution">© Mapbox © OpenStreetMap</div>
     </aside>;
-}
-
-function markerContent(role: MarkerLocation['role'], index: number) {
-    const marker = document.createElement('span');
-    marker.className = role === 'Destination' ? 'map-marker destination-marker' : 'map-marker participant-marker';
-    marker.textContent = role === 'Destination' ? 'D' : String(index);
-    marker.setAttribute('aria-label', role);
-    return marker;
 }

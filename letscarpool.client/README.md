@@ -52,10 +52,10 @@ export default tseslint.config({
   },
 })
 ```
-# Local Google Maps setup
+# Local Mapbox setup
 
-The trip planner uses Google Maps JavaScript API and Places API (New) for address/venue selection and its location map. Set `VITE_GOOGLE_MAPS_API_KEY` in `letscarpool.client/.env.local`; the key is intentionally public in the browser, so restrict it to your local development referrer (for example `http://localhost:57082/*` and `http://127.0.0.1:57082/*`) and restrict enabled APIs to Maps JavaScript API and Places API. Do not commit a key. No key is required to load the app, but search/map and planning with unresolved locations remain unavailable until selections resolve.
+Copy `.env.example` to the ignored `.env.local` file and set `VITE_MAPBOX_ACCESS_TOKEN` to a public browser token. Restrict it to your local preview origin (for this setup, `http://localhost:57082`) and only the scopes needed by Mapbox GL JS and Search Box. The token is intentionally sent from the browser; never commit it, paste it into issues/reports, or include it in screenshots. Mapbox usage is metered, and any free allowance is not a spending cap. This client does not change account, billing, or quota settings.
 
-The map only confirms selected locations. Planner distances and durations remain Haversine estimates; this UI does not display a road route or navigation path.
+Mapbox GL JS renders the location map. Address and venue search uses Mapbox Search Box `/suggest` and `/retrieve` with a bounded five-result list. Search Box results are temporary and the app blocks saving them to durable trips. A user may instead enter their own label and place a pin on the map; those locations carry `userProvided` provenance. Permanent Geocoding is disabled until the account and server are confirmed eligible for persistent results. Do not change provenance in the browser to bypass this gate.
 
-Google Maps loading is opt-in. Leave `VITE_GOOGLE_MAPS_ENABLED=false` (the default) for local UI work. Only set it to `true` for an explicitly approved provider check; a free usage allowance is not a spending cap, and no billing or quota settings are changed by this client.
+The map only confirms locations; it does not draw driving routes. Planner distances remain Haversine straight-line estimates, and arrival time remains coordination information rather than a guarantee.

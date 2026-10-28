@@ -1,4 +1,5 @@
-export type PlaceSource = 'demo' | 'google' | 'unresolved';
+export type PlaceSource = 'demo' | 'mapbox-searchbox-temporary' | 'mapbox-geocoding-permanent' | 'user-provided' | 'unresolved';
+export type LocationProvenance = 'userProvided' | 'mapboxSearchBoxTemporary' | 'mapboxGeocodingPermanent';
 
 export type PlaceSelection = {
     label: string;
@@ -28,46 +29,98 @@ export function isPlaceResolved(place: PlaceSelection) {
         && Number.isFinite(place.longitude);
 }
 
-export function hasGoogleMapsKey(key: string | undefined) {
-    return Boolean(key?.trim());
+export function hasMapboxToken(token: string | undefined) {
+    return Boolean(token?.trim());
 }
 
-export function enabledGoogleMapsKey(enabled: string | undefined, key: string | undefined) {
-    return enabled === 'true' && hasGoogleMapsKey(key) ? key : undefined;
+export function isPlanReady(token: string | undefined, places: PlaceSelection[]) {
+    return hasMapboxToken(token) && places.length > 0 && places.every(place =>
+        isPlaceResolved(place) && (place.source === 'mapbox-searchbox-temporary' || place.source === 'user-provided' || place.source === 'mapbox-geocoding-permanent'));
 }
 
-export function isPlanReady(key: string | undefined, places: PlaceSelection[]) {
-    return hasGoogleMapsKey(key) && places.length > 0 && places.every(isPlaceResolved);
+export function locationProvenance(place: PlaceSelection): LocationProvenance | null {
+    if (place.source === 'user-provided') return 'userProvided';
+    if (place.source === 'mapbox-searchbox-temporary') return 'mapboxSearchBoxTemporary';
+    if (place.source === 'mapbox-geocoding-permanent') return 'mapboxGeocodingPermanent';
+    return null;
 }
 
-export type Coordinate = { lat: number; lng: number };
-export type GooglePlace = { formattedAddress?: string; displayName?: string; location?: { lat: () => number; lng: () => number }; id?: string; fetchFields: (options: { fields: string[] }) => Promise<void> };
-export type GoogleMapsApi = {
-    importLibrary: (name: string) => Promise<unknown>;
-    LatLngBounds: new () => { extend: (location: Coordinate) => void; getCenter: () => Coordinate };
-};
-let mapsPromise: Promise<GoogleMapsApi> | undefined;
+export type MapboxSuggestion = { mapbox_id: string; name: string; full_address?: string; place_formatted: string };
+export type MapboxResolvedLocation = { label: string; latitude: number; longitude: number; mapboxId: string };
 
-export function loadGoogleMaps(key: string | undefined): Promise<GoogleMapsApi> {
-    if (!hasGoogleMapsKey(key)) return Promise.reject(new Error('Google Maps location search is not configured.'));
-    if (mapsPromise) return mapsPromise;
-    mapsPromise = new Promise<GoogleMapsApi>((resolve, reject) => {
-        const existing = document.querySelector<HTMLScriptElement>('script[data-gather-google-maps]');
-        if (existing) {
-            existing.addEventListener('load', () => resolve((window as unknown as { google: { maps: GoogleMapsApi } }).google.maps), { once: true });
-            existing.addEventListener('error', () => reject(new Error('Google Maps could not be loaded.')), { once: true });
-            return;
-        }
-        const script = document.createElement('script');
-        script.dataset.gatherGoogleMaps = 'true';
-        script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key!)}&v=weekly&loading=async`;
-        script.async = true;
-        script.onload = () => resolve((window as unknown as { google: { maps: GoogleMapsApi } }).google.maps);
-        script.onerror = () => reject(new Error('Google Maps could not be loaded. Check the key restrictions and enabled Maps JavaScript API.'));
-        document.head.append(script);
-    }).catch(error => {
-        mapsPromise = undefined;
-        throw error;
-    });
-    return mapsPromise!;
+export class MapboxSearchSequence {
+    private revision = 0;
+    begin() { return ++this.revision; }
+    invalidate() { this.revision += 1; }
+    isCurrent(revision: number) { return this.revision === revision; }
+}
+
+export class MapboxSearchSession {
+    private token = '';
+    private readonly createToken: () => string;
+    constructor(createToken: () => string = () => crypto.randomUUID()) { this.createToken = createToken; }
+    current() { this.token ||= this.createToken(); return this.token; }
+    complete() { this.token = ''; }
+}
+
+export class MapboxProviderError extends Error {
+    readonly status: number;
+    constructor(status: number) { super('Map provider request failed.'); this.status = status; }
+}
+
+export function mapboxSuggestUrl(token: string, query: string, sessionToken: string) {
+    const url = new URL('https://api.mapbox.com/search/searchbox/v1/suggest');
+    url.searchParams.set('q', query);
+    url.searchParams.set('session_token', sessionToken);
+    url.searchParams.set('limit', '5');
+    url.searchParams.set('language', 'en');
+    url.searchParams.set('access_token', token);
+    return url.toString();
+}
+
+export function mapboxRetrieveUrl(mapboxId: string, token: string, sessionToken: string) {
+    const url = new URL(`https://api.mapbox.com/search/searchbox/v1/retrieve/${encodeURIComponent(mapboxId)}`);
+    url.searchParams.set('session_token', sessionToken);
+    url.searchParams.set('access_token', token);
+    return url.toString();
+}
+
+export function parseMapboxSuggestions(value: unknown): MapboxSuggestion[] {
+    if (!isRecord(value) || !Array.isArray(value.suggestions)) return [];
+    return value.suggestions.filter(isRecord)
+        .filter((item): item is MapboxSuggestion => typeof item.mapbox_id === 'string' && typeof item.name === 'string' && typeof item.place_formatted === 'string')
+        .slice(0, 5);
+}
+
+export function parseMapboxRetrievedLocation(value: unknown): MapboxResolvedLocation | null {
+    if (!isRecord(value) || !Array.isArray(value.features)) return null;
+    const feature = value.features.find(isRecord);
+    if (!feature || !isRecord(feature.geometry) || !Array.isArray(feature.geometry.coordinates) || !isRecord(feature.properties)) return null;
+    const [longitude, latitude] = feature.geometry.coordinates;
+    const label = feature.properties.full_address ?? feature.properties.name_preferred ?? feature.properties.name;
+    if (typeof longitude !== 'number' || !Number.isFinite(longitude) || Math.abs(longitude) > 180 || typeof latitude !== 'number' || !Number.isFinite(latitude) || Math.abs(latitude) > 90 || typeof label !== 'string' || !label.trim()) return null;
+    return { label, longitude, latitude, mapboxId: typeof feature.properties.mapbox_id === 'string' ? feature.properties.mapbox_id : '' };
+}
+
+export async function requestMapboxSuggestions(token: string, query: string, sessionToken: string, signal: AbortSignal, fetcher: typeof fetch = fetch) {
+    const response = await fetcher(mapboxSuggestUrl(token, query, sessionToken), { signal });
+    if (!response.ok) throw new MapboxProviderError(response.status);
+    return parseMapboxSuggestions(await response.json() as unknown);
+}
+
+export async function requestMapboxLocation(mapboxId: string, token: string, sessionToken: string, fetcher: typeof fetch = fetch) {
+    const response = await fetcher(mapboxRetrieveUrl(mapboxId, token, sessionToken));
+    if (!response.ok) throw new MapboxProviderError(response.status);
+    return parseMapboxRetrievedLocation(await response.json() as unknown);
+}
+
+export function mapboxProviderMessage(status: number) {
+    if (status === 401) return 'Map search is not authorized. Check the local token setup and allowed scopes.';
+    if (status === 403) return 'Map search is restricted for this local preview. Check token and account access.';
+    if (status === 429) return 'Map search reached a provider rate or usage limit. Try again later.';
+    return 'Map search is temporarily unavailable. Check the network and try again.';
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
 }

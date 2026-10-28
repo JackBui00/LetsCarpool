@@ -33,7 +33,7 @@ export async function tripApi<T>(path: string, token: string | null, init: Reque
         const message = response.status === 404
             ? 'This trip link is invalid, expired, or has been revoked.'
             : problemCode === 'join_already_processed'
-                ? 'This join request was already processed. If its response was lost, the participant capability cannot be recovered from the invite.'
+                ? 'This join attempt already completed and will not create another participant. Continue with the participant link saved in this browser. If no participant capability was saved, access cannot be recovered without an account.'
                 : problemCode === 'trip_capacity_reached'
                     ? 'This trip has reached its six participant limit. Ask the organizer before trying again.'
                     : problemCode === 'revision_conflict'

@@ -1,9 +1,10 @@
-import type { PlaceSelection } from '../places/placeSelection';
+import { locationProvenance, type LocationProvenance, type PlaceSelection } from '../places/placeSelection.ts';
 import { isValidTimeZone } from './dateTime.ts';
 
-export type LocationDto = { label: string; latitude: number; longitude: number };
+export type PlannerLocationDto = { label: string; latitude: number; longitude: number };
+export type LocationDto = PlannerLocationDto & { provenance: LocationProvenance };
 export type TripSummary = { tripId: string; name: string; arrivalAt: string; timeZoneId: string; destination: LocationDto; inviteExpiresAt: string };
-export type CreatedTrip = { tripId: string; revision: number; organizerCapability: string; inviteCapability: string; inviteExpiresAt: string };
+export type CreatedTrip = { tripId: string; revision: number; organizerCapability: string; inviteCapability: string; inviteExpiresAt: string; organizerExpiresAt: string };
 export type PlanAlternativeDto = {
     strategy: 'pickup' | 'rendezvous';
     totalDistanceMeters: number;
@@ -31,6 +32,7 @@ export type PlanAlternativeDto = {
 };
 export type PlannerPlanDto = { alternatives: PlanAlternativeDto[]; searchOperations: number; searchOperationLimit: number };
 export type GeneratedPlanDto = { planId: string; basedOnRevision: number; plan: PlannerPlanDto };
+export type AssignmentRole = 'driver' | 'rider';
 export type TripParticipantDraft = {
     name: string;
     origin: PlaceSelection;
@@ -40,18 +42,40 @@ export type TripParticipantDraft = {
     maxDetourMinutes: number;
 };
 
-export function selectedLocation(place: PlaceSelection): LocationDto | null {
-    if (place.source !== 'google' || !place.label.trim() || place.latitude === null || place.longitude === null || !Number.isFinite(place.latitude) || !Number.isFinite(place.longitude)) return null;
+export function selectedLocation(place: PlaceSelection): PlannerLocationDto | null {
+    if (!['mapbox-searchbox-temporary', 'mapbox-geocoding-permanent', 'user-provided'].includes(place.source) || !place.label.trim() || place.latitude === null || place.longitude === null || !Number.isFinite(place.latitude) || !Number.isFinite(place.longitude)) return null;
     return { label: place.label, latitude: place.latitude, longitude: place.longitude };
+}
+
+export function selectedTripLocation(place: PlaceSelection): LocationDto | null {
+    const location = selectedLocation(place);
+    const provenance = locationProvenance(place);
+    if (!location || provenance === null || provenance === 'mapboxSearchBoxTemporary') return null;
+    return { ...location, provenance };
+}
+
+export function readLocationDto(value: unknown): LocationDto | null {
+    if (!isRecord(value) || typeof value.label !== 'string' || !value.label.trim() || !isFiniteNumber(value.latitude) || Math.abs(value.latitude) > 90 || !isFiniteNumber(value.longitude) || Math.abs(value.longitude) > 180
+        || (value.provenance !== 'userProvided' && value.provenance !== 'mapboxSearchBoxTemporary' && value.provenance !== 'mapboxGeocodingPermanent')) return null;
+    return value as LocationDto;
+}
+
+export function readCreatedTrip(value: unknown): CreatedTrip | null {
+    if (!isRecord(value)) return null;
+    const item = value;
+    if (typeof item.tripId !== 'string' || !item.tripId || typeof item.organizerCapability !== 'string' || !item.organizerCapability
+        || typeof item.inviteCapability !== 'string' || !item.inviteCapability || !isRevision(item.revision)
+        || !isValidExpiry(item.inviteExpiresAt) || !isValidExpiry(item.organizerExpiresAt)) return null;
+    return value as CreatedTrip;
 }
 
 export function readTripSummary(value: unknown): TripSummary | null {
     if (!value || typeof value !== 'object') return null;
     const source = value as Record<string, unknown>;
     const trip = (source.trip && typeof source.trip === 'object' ? source.trip : source) as Record<string, unknown>;
-    const destination = trip.destination as LocationDto | undefined;
+    const destination = readLocationDto(trip.destination);
     const inviteExpiresAt = trip.inviteExpiresAt ?? source.inviteExpiresAt;
-    if (typeof (trip.tripId ?? source.tripId) !== 'string' || !(trip.tripId ?? source.tripId) || typeof trip.name !== 'string' || !trip.name.trim() || typeof trip.arrivalAt !== 'string' || !/[+-]\d{2}:\d{2}$/.test(trip.arrivalAt) || typeof trip.timeZoneId !== 'string' || !isValidTimeZone(trip.timeZoneId) || typeof inviteExpiresAt !== 'string' || !Number.isFinite(Date.parse(inviteExpiresAt)) || typeof destination?.label !== 'string' || !destination.label.trim() || !Number.isFinite(destination.latitude) || !Number.isFinite(destination.longitude)) return null;
+    if (typeof (trip.tripId ?? source.tripId) !== 'string' || !(trip.tripId ?? source.tripId) || typeof trip.name !== 'string' || !trip.name.trim() || typeof trip.arrivalAt !== 'string' || !/[+-]\d{2}:\d{2}$/.test(trip.arrivalAt) || typeof trip.timeZoneId !== 'string' || !isValidTimeZone(trip.timeZoneId) || typeof inviteExpiresAt !== 'string' || !Number.isFinite(Date.parse(inviteExpiresAt)) || !destination) return null;
     return {
         tripId: String(trip.tripId ?? source.tripId), name: trip.name,
         arrivalAt: trip.arrivalAt, timeZoneId: trip.timeZoneId,
@@ -65,6 +89,11 @@ export function readRevision(value: unknown) {
     const nested = source.trip as Record<string, unknown> | undefined;
     const revision = source.revision ?? nested?.revision;
     return typeof revision === 'number' && Number.isSafeInteger(revision) && revision >= 0 ? revision : null;
+}
+
+export function readAssignmentRole(value: unknown): AssignmentRole | null {
+    if (!isRecord(value)) return null;
+    return value.role === 'driver' || value.role === 'rider' ? value.role : null;
 }
 
 export function readGeneratedPlan(value: unknown): GeneratedPlanDto | null {
@@ -117,4 +146,8 @@ function isRevision(value: unknown): value is number {
 
 function isFiniteNumber(value: unknown): value is number {
     return typeof value === 'number' && Number.isFinite(value);
+}
+
+function isValidExpiry(value: unknown): value is string {
+    return typeof value === 'string' && Number.isFinite(Date.parse(value));
 }
