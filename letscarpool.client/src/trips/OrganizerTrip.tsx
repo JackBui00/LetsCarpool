@@ -1,17 +1,17 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import { demoPlace, enabledGoogleMapsKey, type PlaceSelection } from '../places/placeSelection';
+import { demoPlace, type PlaceSelection } from '../places/placeSelection';
 import { LocationPicker } from '../places/LocationPicker';
 import { TripMap } from '../places/TripMap';
 import { clearCapability, getCapability, getOrganizerExpiry, setCapability, setOrganizerExpiry } from './capabilitySession';
 import { tripApi } from './tripApi';
-import { readGeneratedPlan, readRevision, readTripSummary, selectedLocation, type GeneratedPlanDto, type TripSummary } from './tripTypes';
+import { readGeneratedPlan, readLocationDto, readRevision, readTripSummary, selectedTripLocation, type GeneratedPlanDto, type LocationDto, type TripSummary } from './tripTypes';
 import { useGuardedRequest } from './useGuardedRequest';
 import { isValidLocalTimeInZone, isValidTimeZone, isoWithZoneOffset, localInputInZone } from './dateTime';
 import { Notice, SectionTitle } from './TripUi';
 
-const mapsKey = enabledGoogleMapsKey(import.meta.env.VITE_GOOGLE_MAPS_ENABLED, import.meta.env.VITE_GOOGLE_MAPS_API_KEY);
+const mapToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
 type Props = { tripId: string; navigate: (path: string) => void };
-type Person = { participantId?: string; id?: string; name?: string; origin?: { label?: string; latitude?: number; longitude?: number }; canDrive?: boolean; passengerSeats?: number; canMeet?: boolean; status?: string };
+type Person = { participantId?: string; id?: string; name?: string; origin?: LocationDto; canDrive?: boolean; passengerSeats?: number; canMeet?: boolean; status?: string };
 type GeneratedPlan = GeneratedPlanDto;
 type Overview = { trip: TripSummary; revision: number; participants: Person[]; currentPlan?: GeneratedPlan; selectedStrategy?: string; inviteCapability?: string; organizerExpiresAt?: string };
 
@@ -20,6 +20,7 @@ export function OrganizerTrip({ tripId, navigate }: Props) {
     const [organizerExpiresAt, setOrganizerExpiresAt] = useState(() => getOrganizerExpiry(tripId));
     const [overview, setOverview] = useState<Overview | null>(null);
     const [draft, setDraft] = useState<{ name: string; arrivalLocal: string; timeZoneId: string; destination: PlaceSelection } | null>(null);
+    const [manualTarget, setManualTarget] = useState<{ label: string; role: 'Destination' | 'Participant origin' } | null>(null);
     const [dirty, setDirty] = useState(false);
     const [plan, setPlan] = useState<GeneratedPlan | null>(null);
     const [selectedStrategy, setSelectedStrategy] = useState('');
@@ -60,13 +61,13 @@ export function OrganizerTrip({ tripId, navigate }: Props) {
 
     function saveTrip(event: FormEvent) {
         event.preventDefault();
-        if (!overview || !draft || !selectedLocation(draft.destination)) return;
+        if (!overview || !draft || !selectedTripLocation(draft.destination)) return;
         const fields: Record<string, unknown> = {};
         if (draft.name !== overview.trip.name) fields.name = draft.name.trim();
         if (draft.arrivalLocal !== localInputInZone(overview.trip.arrivalAt, overview.trip.timeZoneId) || draft.timeZoneId !== overview.trip.timeZoneId) fields.arrivalAt = isoWithZoneOffset(draft.arrivalLocal, draft.timeZoneId);
         if (draft.timeZoneId !== overview.trip.timeZoneId) fields.timeZoneId = draft.timeZoneId;
         const original = overview.trip.destination;
-        if (draft.destination.label !== original.label || draft.destination.latitude !== original.latitude || draft.destination.longitude !== original.longitude) fields.destination = selectedLocation(draft.destination);
+        if (draft.destination.label !== original.label || draft.destination.latitude !== original.latitude || draft.destination.longitude !== original.longitude || draft.destination.source !== sourceForProvenance(original.provenance)) fields.destination = selectedTripLocation(draft.destination);
         if (Object.keys(fields).length === 0) { setDirty(false); return; }
         void request.run(() => tripApi<unknown>(`/${encodeURIComponent(tripId)}/organizer`, token, { method: 'PATCH', body: JSON.stringify({ expectedRevision: overview.revision, ...fields }) }), () => { setMessage('Trip details saved. Any previous plan was cleared.'); void loadOverview(); });
     }
@@ -166,10 +167,11 @@ export function OrganizerTrip({ tripId, navigate }: Props) {
                 <label>Trip timezone (IANA)<input required disabled={request.loading} value={draft.timeZoneId} onChange={e => edit(current => ({ ...current, timeZoneId: e.target.value }))} /><small>Saved timezone: {overview.trip.timeZoneId}.</small></label>
                 {!isValidTimeZone(draft.timeZoneId) && <p className="location-error" role="alert">Enter a valid IANA timezone.</p>}
                 {isValidTimeZone(draft.timeZoneId) && !isValidLocalTimeInZone(draft.arrivalLocal, draft.timeZoneId) && <p className="location-error" role="alert">Choose a local arrival time that exists in this timezone.</p>}
-                <LocationPicker label="Destination address or venue" value={draft.destination} apiKey={mapsKey} disabled={request.loading} onEdit={place => edit(current => ({ ...current, destination: place }))} onResolved={place => edit(current => ({ ...current, destination: place }))} />
+                <LocationPicker label="Destination address or venue" value={draft.destination} token={mapToken} disabled={request.loading} onEdit={place => edit(current => ({ ...current, destination: place }))} onResolved={place => edit(current => ({ ...current, destination: place }))} onManualPick={label => setManualTarget({ label, role: 'Destination' })} />
+                {draft.destination.source === 'mapbox-searchbox-temporary' && <Notice kind="error">This Search Box result is temporary and cannot be saved to the trip. Use the manual map pin with a label you provide; permanent geocoding is not enabled.</Notice>}
                 {dirty && <p className="warning">Unsaved edits invalidate the visible draft plan. Save them before generating a replacement.</p>}
                 {request.error && <Notice kind="error">{request.error} <button type="button" className="secondary-button" onClick={() => void loadOverview()}>Reload current trip</button></Notice>}
-                <button className="primary-button" type="submit" disabled={request.loading || !dirty || !selectedLocation(draft.destination) || !isValidTimeZone(draft.timeZoneId) || !isValidLocalTimeInZone(draft.arrivalLocal, draft.timeZoneId)}>{request.loading ? 'Saving…' : 'Save trip details'}</button>
+                <button className="primary-button" type="submit" disabled={request.loading || !dirty || !selectedTripLocation(draft.destination) || !isValidTimeZone(draft.timeZoneId) || !isValidLocalTimeInZone(draft.arrivalLocal, draft.timeZoneId)}>{request.loading ? 'Saving…' : 'Save trip details'}</button>
             </form>
             <section className="trip-panel"><SectionTitle number="03" title={`Joined people · ${overview.participants.length} of 6`} note="Creating a trip does not use a seat; you can join through the same guest flow." />
                 {overview.participants.length === 0 ? <p className="status-note">No one has joined yet. Copy the guest invitation to share it privately.</p> : <ul className="roster-list">{overview.participants.map((person, index) => <li key={person.participantId ?? person.id ?? index}><strong>{person.name || 'Participant'}</strong><span>{person.canDrive ? `Offers ${person.passengerSeats ?? 0} passenger seats` : 'Rider'} · {person.canMeet ? 'Can travel to a meetup' : 'Pickup at origin only'}</span>{person.origin?.label && <span>{person.origin.label}</span>}</li>)}</ul>}
@@ -181,7 +183,7 @@ export function OrganizerTrip({ tripId, navigate }: Props) {
                 {activePlan && !planStale && <PlanOptions plan={activePlan} selectedStrategy={selectedStrategy} loading={request.loading} onSelect={selectPlan} />}
             </section>
             {request.error && <Notice kind="error">{request.error}</Notice>}
-        </div><TripMap apiKey={mapsKey} locations={mapLocations} /></div>
+        </div><TripMap token={mapToken} selecting={manualTarget} onPinSelect={point => { if (!manualTarget || !draft) return; edit(current => ({ ...current, destination: { label: manualTarget.label, latitude: point.latitude, longitude: point.longitude, placeId: null, source: 'user-provided' } })); setManualTarget(null); }} locations={mapLocations} /></div>
     </>;
 }
 
@@ -205,7 +207,8 @@ function normalizeOverview(value: unknown, tripId: string): Overview | null {
     if (!trip || revision === null || trip.tripId !== tripId) return null;
     const rawParticipants = source.participants;
     if (!Array.isArray(rawParticipants)) return null;
-    const participants = rawParticipants as Person[];
+    if (!rawParticipants.every(person => person && typeof person === 'object' && !Array.isArray(person) && readLocationDto((person as Record<string, unknown>).origin))) return null;
+    const participants = rawParticipants.map(person => ({ ...(person as Record<string, unknown>), origin: readLocationDto((person as Record<string, unknown>).origin)! })) as Person[];
     const rawPlan = source.currentPlan ?? source.draftPlan ?? source.selectedPlan;
     const currentPlan = rawPlan && typeof rawPlan === 'object' ? readGeneratedPlan(rawPlan) ?? undefined : undefined;
     return {
@@ -227,9 +230,10 @@ function isRotatedOrganizer(value: unknown): value is { organizerCapability: str
     return typeof item.organizerCapability === 'string' && Boolean(item.organizerCapability) && typeof item.organizerExpiresAt === 'string' && Number.isFinite(Date.parse(item.organizerExpiresAt));
 }
 
-function dtoPlace(location: { label?: string; latitude?: number; longitude?: number }): PlaceSelection {
-    return { label: location.label ?? '', latitude: location.latitude ?? null, longitude: location.longitude ?? null, placeId: null, source: location.latitude != null && location.longitude != null ? 'google' : 'unresolved' };
+function dtoPlace(location: LocationDto): PlaceSelection {
+    return { label: location.label, latitude: location.latitude, longitude: location.longitude, placeId: null, source: sourceForProvenance(location.provenance) };
 }
+function sourceForProvenance(provenance: LocationDto['provenance']): PlaceSelection['source'] { return provenance === 'userProvided' ? 'user-provided' : provenance === 'mapboxGeocodingPermanent' ? 'mapbox-geocoding-permanent' : 'mapbox-searchbox-temporary'; }
 function formatArrival(value: string, zone: string) { try { return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short', timeZone: zone }).format(new Date(value)); } catch { return value; } }
 function formatStrategy(strategy: string) { return strategy === 'rendezvous' ? 'Meet at a shared point' : strategy === 'pickup' ? 'Pick up along the way' : strategy; }
 function formatDistance(meters: number) { return meters >= 1000 ? `${(meters / 1000).toFixed(1)} km` : `${Math.round(meters)} m`; }

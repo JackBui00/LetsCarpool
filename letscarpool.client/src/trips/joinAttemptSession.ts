@@ -83,7 +83,8 @@ function isRequestBody(value: unknown): value is JoinRequestBody {
         || typeof value.passengerSeats !== 'number' || !Number.isInteger(value.passengerSeats) || value.passengerSeats < 0 || value.passengerSeats > 8
         || typeof value.maxDetourMinutes !== 'number' || !Number.isFinite(value.maxDetourMinutes) || value.maxDetourMinutes < 0 || value.maxDetourMinutes > 1440
         || value.locationDisclosureAccepted !== true || !isRecord(value.origin)) return false;
-    return typeof value.origin.label === 'string' && Number.isFinite(value.origin.latitude) && Number.isFinite(value.origin.longitude);
+    return typeof value.origin.label === 'string' && Number.isFinite(value.origin.latitude) && Number.isFinite(value.origin.longitude)
+        && (value.origin.provenance === 'userProvided' || value.origin.provenance === 'mapboxSearchBoxTemporary' || value.origin.provenance === 'mapboxGeocodingPermanent');
 }
 
 function isUuid(value: string) {

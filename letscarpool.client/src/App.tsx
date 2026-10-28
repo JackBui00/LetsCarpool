@@ -1,6 +1,6 @@
 import { useRef, useState, type FormEvent } from 'react';
 import { PlanRequestRevision, runPlanRequest } from './planRequestLifecycle.ts';
-import { demoPlace, enabledGoogleMapsKey, hasGoogleMapsKey, isPlaceResolved, isPlanReady, unresolvedPlace, type PlaceSelection } from './places/placeSelection';
+import { demoPlace, hasMapboxToken, isPlaceResolved, isPlanReady, unresolvedPlace, type PlaceSelection } from './places/placeSelection';
 import { LocationPicker } from './places/LocationPicker';
 import { TripMap } from './places/TripMap';
 import './App.css';
@@ -21,7 +21,7 @@ const seed: Participant[] = [
     { id: 'jordan', name: 'Jordan', origin: demoPlace('Ferry Building', 37.7955, -122.3937), passengerSeats: 0, canMeet: false },
 ];
 const initialDestination: Place = demoPlace('Golden Gate Park', 37.7694, -122.4862);
-const mapsKey = enabledGoogleMapsKey(import.meta.env.VITE_GOOGLE_MAPS_ENABLED, import.meta.env.VITE_GOOGLE_MAPS_API_KEY);
+const mapToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
 
 function App() {
     const [destination, setDestination] = useState(initialDestination);
@@ -30,6 +30,7 @@ function App() {
     const [result, setResult] = useState<PlanResponse | null>(null);
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
+    const [manualTarget, setManualTarget] = useState<{ id: string; label: string; role: 'Destination' | 'Participant origin' } | null>(null);
     const planRevisions = useRef(new PlanRequestRevision());
 
     function invalidatePlan() {
@@ -55,7 +56,7 @@ function App() {
 
     async function planTrip(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
-        if (!isPlanReady(mapsKey, [destination, ...participants.map(person => person.origin)])) return;
+        if (!isPlanReady(mapToken, [destination, ...participants.map(person => person.origin)])) return;
         setError('');
         setResult(null);
         setLoading(true);
@@ -85,29 +86,35 @@ function App() {
         invalidatePlan();
         setDestination(place);
     };
-    const planReady = isPlanReady(mapsKey, [destination, ...participants.map(person => person.origin)]);
+    const planReady = isPlanReady(mapToken, [destination, ...participants.map(person => person.origin)]);
     return <main className="app-shell">
         <header className="topbar"><a className="brand" href="#top" aria-label="Gather home"><span className="brand-mark" aria-hidden="true">g</span> gather<span className="brand-dot">.</span></a><span className="session-badge"><span /> Unsaved planning session</span></header>
         <section className="intro" id="top"><p className="eyebrow">LESS COORDINATION. MORE TOGETHER.</p><h1>Getting there is<br /><em>part of the plan.</em></h1><p className="intro-copy">Bring your crew together. Compare picking each other up with meeting along the way.</p></section>
         <form onSubmit={planTrip}>
-            {!hasGoogleMapsKey(mapsKey) && <div className="setup-notice" role="status"><strong>Location search setup required</strong><span>Add <code>VITE_GOOGLE_MAPS_API_KEY</code> to an ignored local <code>.env.local</code> file, restricted to your localhost referrer and the Maps JavaScript API. Until then, the prefilled locations are demo data and cannot be submitted. No key is stored in this project.</span></div>}
+            {!hasMapboxToken(mapToken) && <div className="setup-notice" role="status"><strong>Mapbox location search unavailable</strong><span>Configure a restricted public Mapbox token in the ignored local <code>.env.local</code> file. Until then, the prefilled locations are demo data and cannot be submitted. Mapbox usage is metered; a free allowance is not a spending cap.</span></div>}
             <div className="planner-layout">
             <div className="planner-form">
             <section className="panel destination-panel" aria-labelledby="destination-title"><div className="section-heading"><span className="step">01</span><div><h2 id="destination-title">Where are you all headed?</h2><p>One shared destination keeps everyone on the same trip.</p></div></div>
-                <LocationPicker label="Destination address or venue" value={destination} apiKey={mapsKey} onEdit={patchDestination} onResolved={place => { invalidatePlan(); setDestination(place); }} />
+                <LocationPicker label="Destination address or venue" value={destination} token={mapToken} onEdit={patchDestination} onResolved={place => { invalidatePlan(); setDestination(place); }} onManualPick={label => setManualTarget({ id: 'destination', label, role: 'Destination' })} />
             </section>
             <section className="panel people-panel" aria-labelledby="people-title"><div className="section-heading"><span className="step">02</span><div><h2 id="people-title">Who's coming along?</h2><p>Add your friends and where they'll start from. Up to 6 people.</p></div><span className="people-count">{participants.length} of 6</span></div>
                 <div className="people-list">{participants.map((person, index) => <article className="person-card" key={person.id}><div className="person-head"><span className="person-number">{String(index + 1).padStart(2, '0')}</span><label className="name-field">Name<input required value={person.name} onChange={e => updateParticipant(person.id, { name: e.target.value })} placeholder="Friend's name" /></label><button className="remove-button" type="button" aria-label={`Remove ${person.name || 'participant'}`} onClick={() => { invalidatePlan(); setParticipants(current => current.filter(p => p.id !== person.id)); }} disabled={participants.length <= 1}>Remove</button></div>
-                    <LocationPicker label={`${person.name || 'Participant'} starting address or venue`} value={person.origin} apiKey={mapsKey} onEdit={place => updateParticipant(person.id, { origin: place })} onResolved={place => updateParticipant(person.id, { origin: place })} />
+                    <LocationPicker label={`${person.name || 'Participant'} starting address or venue`} value={person.origin} token={mapToken} onEdit={place => updateParticipant(person.id, { origin: place })} onResolved={place => updateParticipant(person.id, { origin: place })} onManualPick={label => setManualTarget({ id: person.id, label, role: 'Participant origin' })} />
                     <div className="person-options"><label className="seat-control">Passenger seats <input aria-label={`Passenger seats offered by ${person.name || 'participant'}`} type="number" min="0" max="8" value={person.passengerSeats} onChange={e => updateParticipant(person.id, { passengerSeats: Math.min(8, Math.max(0, Number(e.target.value))) })} /></label><span className="seat-help">Seats available for friends, driver not included</span><label className="check-control"><input type="checkbox" checked={person.canMeet} onChange={e => updateParticipant(person.id, { canMeet: e.target.checked })} /><span>I'm okay traveling to meet my driver</span></label></div>
                 </article>)}</div>
                 <button className="add-button" type="button" onClick={addParticipant} disabled={participants.length >= 6}><span aria-hidden="true">+</span> {participants.length >= 6 ? 'Maximum group size reached' : 'Add a friend'}</button>
             </section>
             </div>
-            <TripMap apiKey={mapsKey} locations={[{ id: 'destination', label: destination.label, role: 'Destination', place: destination }, ...participants.map((person, index) => ({ id: person.id, label: `${index + 1}. ${person.name || 'Participant'}`, role: 'Participant origin' as const, place: person.origin }))]} />
+            <TripMap token={mapToken} selecting={manualTarget} onPinSelect={point => {
+                if (!manualTarget) return;
+                const place: PlaceSelection = { label: manualTarget.label, latitude: point.latitude, longitude: point.longitude, placeId: null, source: 'user-provided' };
+                if (manualTarget.id === 'destination') { invalidatePlan(); setDestination(place); }
+                else updateParticipant(manualTarget.id, { origin: place });
+                setManualTarget(null);
+            }} locations={[{ id: 'destination', label: destination.label, role: 'Destination', place: destination }, ...participants.map((person, index) => ({ id: person.id, label: `${index + 1}. ${person.name || 'Participant'}`, role: 'Participant origin' as const, place: person.origin }))]} />
             </div>
             <section className="panel preferences-panel" aria-labelledby="preferences-title"><div className="section-heading"><span className="step">03</span><div><h2 id="preferences-title">Set the ride preferences</h2><p>Limit extra estimated time on each driver's vehicle route.</p></div></div><label className="detour-control">Maximum extra estimated vehicle time per driver <span className="range-value">{maxDetourMinutes} min</span><input type="range" min="0" max="1440" step="5" value={maxDetourMinutes} onChange={e => { invalidatePlan(); setMaxDetourMinutes(Number(e.target.value)); }} /><span className="range-ends"><span>No extra time</span><span>24 hours</span></span></label><p className="field-note detour-note">Measured beyond the driver's direct origin-to-destination estimate. Includes the driver's route through pickups or a meetup; excludes riders' independent travel to rendezvous points.</p></section>
-            <div className="submit-row"><p>{planReady ? 'Compare shared pickup routes and meeting points.' : !hasGoogleMapsKey(mapsKey) ? 'Set up location search to resolve demo places and plan.' : 'Choose a search result for every location before planning.'}</p><button className="primary-button" type="submit" disabled={loading || !planReady}>{loading ? <><span className="spinner" /> Finding options…</> : <>Find our options <span aria-hidden="true">→</span></>}</button></div>
+            <div className="submit-row"><p>{planReady ? 'Compare shared pickup routes and meeting points.' : !hasMapboxToken(mapToken) ? 'Set up Mapbox search to resolve demo places and plan.' : 'Choose a search result for every location before planning.'}</p><button className="primary-button" type="submit" disabled={loading || !planReady}>{loading ? <><span className="spinner" /> Finding options…</> : <>Find our options <span aria-hidden="true">→</span></>}</button></div>
         </form>
         {error && <div className="notice error-notice" role="alert"><strong>We couldn't plan this trip.</strong><span>{error}</span></div>}
         {result && <Results response={result} participants={participants} />}
@@ -130,7 +137,7 @@ function Results({ response, participants }: { response: PlanResponse; participa
                 <ol className="stop-list">{group.stops.map((stop, stopIndex) => {
                     const stopPerson = stop.participantId ? participantNames.get(stop.participantId) ?? stop.participantId : null;
                     const heading = stop.kind === "rendezvous" ? "Meetup at " + (stopPerson ?? "selected origin") + "'s origin" : stop.kind === "destination" ? "Shared destination" : stopPerson ?? "Pickup stop";
-                    return <li key={(stop.participantId ?? stop.kind) + "-" + stopIndex}><span className="stop-dot" /><span className="stop-person">{heading}</span><span>{stop.label}</span><span className="stop-kind">{formatStopKind(stop.kind)}</span><span className="stop-location">{stop.latitude.toFixed(4)}, {stop.longitude.toFixed(4)}</span></li>;
+                    return <li key={(stop.participantId ?? stop.kind) + "-" + stopIndex}><span className="stop-dot" /><span className="stop-person">{heading}</span><span>{stop.label}</span><span className="stop-kind">{formatStopKind(stop.kind)}</span></li>;
                 })}</ol>
                 {group.independentTravelLegs.length > 0 && <div className="travel-legs"><h5>Independent trips to the meetup</h5>{group.independentTravelLegs.map((leg, legIndex) => <p key={leg.participantId + "-" + legIndex}><strong>{participantNames.get(leg.participantId) ?? leg.participantId}:</strong> {leg.from.label} → {leg.to.label} · estimated distance {formatDistance(leg.distanceMeters)} · estimated {leg.durationMinutes} min ({formatModeAssumption(leg.modeAssumption)}; 40 km/h Haversine estimate)</p>)}</div>}
             </div>)}
