@@ -4,7 +4,7 @@ import { LocationPicker } from '../places/LocationPicker';
 import { TripMap } from '../places/TripMap';
 import { clearCapability, getCapability } from './capabilitySession';
 import { tripApi } from './tripApi';
-import { readRevision, readTripSummary, selectedLocation, type TripSummary } from './tripTypes';
+import { readAssignmentRole, readRevision, readTripSummary, selectedLocation, type AssignmentRole, type TripSummary } from './tripTypes';
 import { useGuardedRequest } from './useGuardedRequest';
 import { Notice, SectionTitle } from './TripUi';
 
@@ -13,7 +13,7 @@ type Props = { tripId: string; navigate: (path: string) => void };
 type Profile = { name: string; origin: PlaceSelection; canDrive: boolean; passengerSeats: number; canMeet: boolean; maxDetourMinutes: number; locationDisclosureAccepted: boolean };
 type OwnTravelLeg = { participantId: string; from: { label: string; kind: 'origin' }; to: { label: string; kind: 'rendezvous' }; distanceMeters: number; durationMinutes: number; modeAssumption: 'unspecified' };
 type OwnAssignmentGroup = { driver?: { name?: string }; riders?: Array<{ name?: string }>; stops?: Array<{ kind?: string; label?: string }>; independentTravelLegs?: OwnTravelLeg[]; totalDistanceMeters?: number; durationMinutes?: number };
-type OwnAssignment = { strategy?: string; group?: OwnAssignmentGroup; independentTravelLegs?: OwnTravelLeg[]; driver?: { name?: string }; riders?: Array<{ name?: string }>; stops?: Array<{ kind?: string; label?: string }>; totalDistanceMeters?: number; durationMinutes?: number };
+type OwnAssignment = { role: AssignmentRole; strategy: 'pickup' | 'rendezvous'; group?: OwnAssignmentGroup; independentTravelLegs?: OwnTravelLeg[]; driver?: { name?: string }; riders?: Array<{ name?: string }>; stops?: Array<{ kind?: string; label?: string }>; totalDistanceMeters?: number; durationMinutes?: number };
 type SelfView = { revision: number; trip: TripSummary; profile: Profile; assignment?: OwnAssignment | null };
 
 export function ParticipantTrip({ tripId, navigate }: Props) {
@@ -107,6 +107,7 @@ export function ParticipantTrip({ tripId, navigate }: Props) {
 
 function OwnAssignmentCard({ assignment, driver, riders, stops, independentTravelLegs, totalDistanceMeters, durationMinutes }: { assignment: OwnAssignment; driver?: { name?: string }; riders: Array<{ name?: string }>; stops: Array<{ kind?: string; label?: string }>; independentTravelLegs: OwnTravelLeg[]; totalDistanceMeters?: number; durationMinutes?: number }) {
     return <div className="assignment-card"><h2>{assignment.strategy === 'rendezvous' ? 'Meet along the way' : assignment.strategy === 'pickup' ? 'Pick up along the way' : 'Your carpool assignment'}</h2>
+        <p><strong>Your role:</strong> {assignment.role === 'driver' ? 'Driver' : 'Rider'}</p>
         <p><strong>Driver:</strong> {driver?.name ?? 'See your group details'}</p>
         <p><strong>Assigned companions:</strong> {riders.map(person => person.name).filter(Boolean).join(', ') || 'See your group details'}</p>
         {totalDistanceMeters !== undefined && <p>Estimated group travel {formatDistance(totalDistanceMeters)} · {durationMinutes ?? '—'} estimated minutes.</p>}
@@ -126,11 +127,19 @@ function normalizeSelf(value: unknown, tripId: string): SelfView | null {
     const rawOrigin = profile.origin as { label?: string; latitude?: number; longitude?: number } | undefined;
     if (typeof rawOrigin?.label !== 'string' || !Number.isFinite(rawOrigin.latitude) || !Number.isFinite(rawOrigin.longitude)) return null;
     const origin: PlaceSelection = { label: rawOrigin.label, latitude: rawOrigin.latitude!, longitude: rawOrigin.longitude!, placeId: null, source: 'google' };
-    const assignment = source.selectedAssignment ?? source.assignment;
+    const rawAssignment = source.selectedAssignment ?? source.assignment;
+    let assignment: OwnAssignment | null = null;
+    if (rawAssignment !== undefined && rawAssignment !== null) {
+        if (typeof rawAssignment !== 'object' || Array.isArray(rawAssignment) || 'alternatives' in rawAssignment) return null;
+        const candidate = rawAssignment as Record<string, unknown>;
+        const role = readAssignmentRole(candidate);
+        if (!role || (candidate.strategy !== 'pickup' && candidate.strategy !== 'rendezvous')) return null;
+        assignment = candidate as unknown as OwnAssignment;
+    }
     return {
         revision, trip,
         profile: { name: profile.name, origin, canDrive: profile.canDrive, passengerSeats: profile.passengerSeats, canMeet: profile.canMeet, maxDetourMinutes: profile.maxDetourMinutes, locationDisclosureAccepted: disclosureAccepted },
-        assignment: assignment && typeof assignment === 'object' && !('alternatives' in assignment) ? assignment as OwnAssignment : null,
+        assignment,
     };
 }
 

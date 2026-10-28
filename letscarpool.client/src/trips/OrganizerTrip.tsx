@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { demoPlace, enabledGoogleMapsKey, type PlaceSelection } from '../places/placeSelection';
 import { LocationPicker } from '../places/LocationPicker';
 import { TripMap } from '../places/TripMap';
-import { clearCapability, getCapability, setCapability } from './capabilitySession';
+import { clearCapability, getCapability, getOrganizerExpiry, setCapability, setOrganizerExpiry } from './capabilitySession';
 import { tripApi } from './tripApi';
 import { readGeneratedPlan, readRevision, readTripSummary, selectedLocation, type GeneratedPlanDto, type TripSummary } from './tripTypes';
 import { useGuardedRequest } from './useGuardedRequest';
@@ -13,10 +13,11 @@ const mapsKey = enabledGoogleMapsKey(import.meta.env.VITE_GOOGLE_MAPS_ENABLED, i
 type Props = { tripId: string; navigate: (path: string) => void };
 type Person = { participantId?: string; id?: string; name?: string; origin?: { label?: string; latitude?: number; longitude?: number }; canDrive?: boolean; passengerSeats?: number; canMeet?: boolean; status?: string };
 type GeneratedPlan = GeneratedPlanDto;
-type Overview = { trip: TripSummary; revision: number; participants: Person[]; currentPlan?: GeneratedPlan; selectedStrategy?: string; inviteCapability?: string; organizerCapabilityExpiresAt?: string };
+type Overview = { trip: TripSummary; revision: number; participants: Person[]; currentPlan?: GeneratedPlan; selectedStrategy?: string; inviteCapability?: string; organizerExpiresAt?: string };
 
 export function OrganizerTrip({ tripId, navigate }: Props) {
     const [token, setToken] = useState(() => getCapability('organizer', tripId));
+    const [organizerExpiresAt, setOrganizerExpiresAt] = useState(() => getOrganizerExpiry(tripId));
     const [overview, setOverview] = useState<Overview | null>(null);
     const [draft, setDraft] = useState<{ name: string; arrivalLocal: string; timeZoneId: string; destination: PlaceSelection } | null>(null);
     const [dirty, setDirty] = useState(false);
@@ -40,6 +41,10 @@ export function OrganizerTrip({ tripId, navigate }: Props) {
             setSelectedStrategy(parsed.selectedStrategy ?? '');
             if (parsed.inviteCapability) setInviteToken(parsed.inviteCapability);
             if (parsed.trip.inviteExpiresAt) setInviteExpiry(parsed.trip.inviteExpiresAt);
+            if (parsed.organizerExpiresAt) {
+                setOrganizerExpiresAt(parsed.organizerExpiresAt);
+                try { setOrganizerExpiry(tripId, parsed.organizerExpiresAt); } catch { /* Expiry metadata is optional local convenience. */ }
+            }
             setDirty(false);
         });
     }, [token, tripId, run, setError]);
@@ -125,11 +130,13 @@ export function OrganizerTrip({ tripId, navigate }: Props) {
         if (!window.confirm('Rotate the organizer capability? This will invalidate the management link in other tabs.')) return;
         void request.run(async () => {
             const result = await tripApi<unknown>(`/${encodeURIComponent(tripId)}/organizer/rotate`, token, { method: 'POST' });
-            if (!isRotatedOrganizer(result)) throw new Error('The service did not return the new organizer capability.');
+            if (!isRotatedOrganizer(result)) throw new Error('The service did not return the new organizer capability and expiry.');
             return result;
         }, result => {
             setCapability('organizer', tripId, result.organizerCapability);
+            try { setOrganizerExpiry(tripId, result.organizerExpiresAt); } catch { /* The service response remains authoritative in this view. */ }
             setToken(result.organizerCapability);
+            setOrganizerExpiresAt(result.organizerExpiresAt);
             setMessage('Organizer capability rotated. The previous management link no longer works.');
         });
     }
@@ -149,7 +156,7 @@ export function OrganizerTrip({ tripId, navigate }: Props) {
         <div className="trip-layout"><div className="trip-form-column">
             <section className="trip-panel"><SectionTitle number="01" title="Share the right link" note="These capabilities grant different permissions." />
                 <div className="capability-card"><strong>Guest invitation · participant access only</strong><span>Guests can join and edit only their own entry. Invitation expires {inviteExpiry ? formatArrival(inviteExpiry, overview.trip.timeZoneId) : 'after 7 days'}.</span><button className="copy-button" onClick={() => void copyCapability('invite')} disabled={!inviteToken}>Copy guest invite link</button></div>
-                <div className="capability-card"><strong>Organizer management · keep private</strong><span>Controls trip details, joined participant roster, plan generation and selection.</span><div className="copy-actions"><button className="secondary-button" onClick={() => void copyCapability('organizer')}>Copy organizer link</button><button className="danger-button" onClick={rotateOrganizer} disabled={request.loading}>Rotate organizer access</button></div></div>
+                <div className="capability-card"><strong>Organizer management · keep private</strong><span>Controls trip details, joined participant roster, plan generation and selection.</span><span>{organizerExpiresAt ? `Organizer access expires ${formatArrival(organizerExpiresAt, overview.trip.timeZoneId)}.` : 'Organizer access expiry was not provided by the service.'}</span><div className="copy-actions"><button className="secondary-button" onClick={() => void copyCapability('organizer')}>Copy organizer link</button><button className="danger-button" onClick={rotateOrganizer} disabled={request.loading}>Rotate organizer access</button></div></div>
                 <p className="status-note">This preview creates local links on {window.location.origin}; friends on other devices cannot open them until the app is hosted.</p>
                 {message && <p className="status-note" role="status">{message}</p>}
             </section>
@@ -205,7 +212,7 @@ function normalizeOverview(value: unknown, tripId: string): Overview | null {
         trip: { ...trip, tripId: trip.tripId || tripId }, revision, participants,
         currentPlan, selectedStrategy: typeof source.selectedStrategy === 'string' ? source.selectedStrategy : undefined,
         inviteCapability: typeof source.inviteCapability === 'string' ? source.inviteCapability : undefined,
-        organizerCapabilityExpiresAt: typeof source.organizerCapabilityExpiresAt === 'string' ? source.organizerCapabilityExpiresAt : undefined,
+        organizerExpiresAt: typeof source.organizerExpiresAt === 'string' ? source.organizerExpiresAt : undefined,
     };
 }
 
@@ -214,10 +221,10 @@ function isRotatedInvite(value: unknown): value is { inviteCapability: string; i
     const item = value as Record<string, unknown>;
     return typeof item.inviteCapability === 'string' && Boolean(item.inviteCapability) && typeof item.inviteExpiresAt === 'string';
 }
-function isRotatedOrganizer(value: unknown): value is { organizerCapability: string } {
+function isRotatedOrganizer(value: unknown): value is { organizerCapability: string; organizerExpiresAt: string } {
     if (!value || typeof value !== 'object') return false;
     const item = value as Record<string, unknown>;
-    return typeof item.organizerCapability === 'string' && Boolean(item.organizerCapability);
+    return typeof item.organizerCapability === 'string' && Boolean(item.organizerCapability) && typeof item.organizerExpiresAt === 'string' && Number.isFinite(Date.parse(item.organizerExpiresAt));
 }
 
 function dtoPlace(location: { label?: string; latitude?: number; longitude?: number }): PlaceSelection {

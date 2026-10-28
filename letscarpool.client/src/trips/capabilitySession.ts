@@ -42,3 +42,19 @@ export function setCapability(role: CapabilityRole, tripId: string, token: strin
 export function clearCapability(role: CapabilityRole, tripId: string, storage?: CapabilityStorage) {
     try { (storage ?? sessionStorage).removeItem(capabilityStorageKey(role, tripId)); } catch { /* Storage may be unavailable. */ }
 }
+
+export function getOrganizerExpiry(tripId: string, storage?: Pick<Storage, 'getItem'>) {
+    try { return (storage ?? sessionStorage).getItem(organizerExpiryStorageKey(tripId)); } catch { return null; }
+}
+
+export function setOrganizerExpiry(tripId: string, value: string, storage?: Pick<Storage, 'setItem'>) {
+    (storage ?? sessionStorage).setItem(organizerExpiryStorageKey(tripId), value);
+}
+
+export function organizerExpiryStorageKey(tripId: string) {
+    return `gather.organizer-expiry.${tripId}`;
+}
+
+export function participantContinuation(hasSavedCapability: boolean, tripId: string) {
+    return hasSavedCapability ? { path: `/trip/${encodeURIComponent(tripId)}`, label: 'Continue to my participant link' } : null;
+}
