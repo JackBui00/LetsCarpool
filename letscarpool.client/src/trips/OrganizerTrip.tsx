@@ -67,7 +67,7 @@ export function OrganizerTrip({ tripId, navigate }: Props) {
         if (draft.arrivalLocal !== localInputInZone(overview.trip.arrivalAt, overview.trip.timeZoneId) || draft.timeZoneId !== overview.trip.timeZoneId) fields.arrivalAt = isoWithZoneOffset(draft.arrivalLocal, draft.timeZoneId);
         if (draft.timeZoneId !== overview.trip.timeZoneId) fields.timeZoneId = draft.timeZoneId;
         const original = overview.trip.destination;
-        if (draft.destination.label !== original.label || draft.destination.latitude !== original.latitude || draft.destination.longitude !== original.longitude || draft.destination.source !== sourceForProvenance(original.provenance)) fields.destination = selectedTripLocation(draft.destination);
+        if (draft.destination.label !== original.label || draft.destination.latitude !== original.latitude || draft.destination.longitude !== original.longitude || draft.destination.source !== sourceForLocationSource(original.locationSource)) fields.destination = selectedTripLocation(draft.destination);
         if (Object.keys(fields).length === 0) { setDirty(false); return; }
         void request.run(() => tripApi<unknown>(`/${encodeURIComponent(tripId)}/organizer`, token, { method: 'PATCH', body: JSON.stringify({ expectedRevision: overview.revision, ...fields }) }), () => { setMessage('Trip details saved. Any previous plan was cleared.'); void loadOverview(); });
     }
@@ -168,8 +168,8 @@ export function OrganizerTrip({ tripId, navigate }: Props) {
                 <label>Trip timezone (IANA)<input required disabled={request.loading} value={draft.timeZoneId} onChange={e => edit(current => ({ ...current, timeZoneId: e.target.value }))} /><small>Saved timezone: {overview.trip.timeZoneId}.</small></label>
                 {!isValidTimeZone(draft.timeZoneId) && <p className="location-error" role="alert">Enter a valid IANA timezone.</p>}
                 {isValidTimeZone(draft.timeZoneId) && !isValidLocalTimeInZone(draft.arrivalLocal, draft.timeZoneId) && <p className="location-error" role="alert">Choose a local arrival time that exists in this timezone.</p>}
-                <LocationPicker label="Destination address or venue" value={draft.destination} token={mapToken} disabled={request.loading} onEdit={place => edit(current => ({ ...current, destination: place }))} onResolved={place => edit(current => ({ ...current, destination: place }))} onManualPick={label => setManualTarget({ label, role: 'Destination' })} />
-                {draft.destination.source === 'mapbox-searchbox-temporary' && <Notice kind="error">This Search Box result is temporary and cannot be saved to the trip. Use the manual map pin with a label you provide; permanent geocoding is not enabled.</Notice>}
+                <LocationPicker label="Destination address or venue" value={draft.destination} token={mapToken} disabled={request.loading} onEdit={place => edit(current => ({ ...current, destination: place }))} onManualPick={label => setManualTarget({ label, role: 'Destination' })} />
+                {draft.destination.source === 'mapbox-searchbox-temporary' && <Notice kind="error">Temporary Mapbox search results cannot be saved. Address search is gated; use your own label and pin.</Notice>}
                 {dirty && <p className="warning">Unsaved edits invalidate the visible draft plan. Save them before generating a replacement.</p>}
                 {request.error && <Notice kind="error">{request.error} <button type="button" className="secondary-button" onClick={() => void loadOverview()}>Reload current trip</button></Notice>}
                 <button className="primary-button" type="submit" disabled={request.loading || !dirty || !selectedTripLocation(draft.destination) || !isValidTimeZone(draft.timeZoneId) || !isValidLocalTimeInZone(draft.arrivalLocal, draft.timeZoneId)}>{request.loading ? 'Saving…' : 'Save trip details'}</button>
@@ -232,9 +232,9 @@ function isRotatedOrganizer(value: unknown): value is { organizerCapability: str
 }
 
 function dtoPlace(location: LocationDto): PlaceSelection {
-    return { label: location.label, latitude: location.latitude, longitude: location.longitude, placeId: null, source: sourceForProvenance(location.provenance) };
+    return { label: location.label, latitude: location.latitude, longitude: location.longitude, placeId: null, source: sourceForLocationSource(location.locationSource) };
 }
-function sourceForProvenance(provenance: LocationDto['provenance']): PlaceSelection['source'] { return provenance === 'userProvided' ? 'user-provided' : provenance === 'mapboxGeocodingPermanent' ? 'mapbox-geocoding-permanent' : 'mapbox-searchbox-temporary'; }
+function sourceForLocationSource(source: LocationDto['locationSource']): PlaceSelection['source'] { return source === 'userProvided' ? 'user-provided' : 'mapbox-geocoding-permanent'; }
 function formatArrival(value: string, zone: string) { try { return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short', timeZone: zone }).format(new Date(value)); } catch { return value; } }
 function formatStrategy(strategy: string) { return strategy === 'rendezvous' ? 'Meet at a shared point' : strategy === 'pickup' ? 'Pick up along the way' : strategy; }
 function formatDistance(meters: number) { return meters >= 1000 ? `${(meters / 1000).toFixed(1)} km` : `${Math.round(meters)} m`; }

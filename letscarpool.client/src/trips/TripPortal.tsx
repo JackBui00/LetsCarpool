@@ -82,7 +82,7 @@ function CreateTrip({ navigate }: { navigate: (path: string) => void }) {
 
     return <>
         <section className="trip-intro"><p className="eyebrow">A PLAN FOR YOUR PEOPLE</p><h1>Make the trip<br /><em>together.</em></h1><p>Create one private trip, then invite each friend to add their own starting place and ride preferences.</p></section>
-        {!hasMapboxToken(mapToken) && <Notice>Map search is unavailable until a restricted local Mapbox token is configured. Demo locations are never submitted as real addresses.</Notice>}
+        {!hasMapboxToken(mapToken) && <Notice>The Mapbox map is unavailable until a restricted local token is configured. Address search is gated until the server is eligible for permanent storage; enter your own label and place a pin.</Notice>}
         <form className="trip-layout" onSubmit={create}>
             <div className="trip-form-column">
                 <section className="trip-panel"><SectionTitle number="01" title="Start a trip" note="Create a private plan for one destination." />
@@ -91,8 +91,8 @@ function CreateTrip({ navigate }: { navigate: (path: string) => void }) {
                     <label>Trip timezone (IANA)<input required disabled={request.loading} value={timeZoneId} onChange={e => edit(() => setTimeZoneId(e.target.value))} placeholder="America/Los_Angeles" /><small>Default: this device's timezone. Verify it matches the event location.</small></label>
                     {!timezoneValid && <p className="location-error" role="alert">Enter a valid IANA timezone such as America/Los_Angeles.</p>}
                     {timezoneValid && arrivalLocal && !arrivalValid && <p className="location-error" role="alert">Choose a local arrival time that exists in this timezone.</p>}
-                    <LocationPicker label="Destination address or venue" value={destination} token={mapToken} disabled={request.loading} onEdit={place => edit(() => setDestination(place))} onResolved={place => edit(() => setDestination(place))} onManualPick={label => setManualTarget({ label, role: 'Destination' })} />
-                    {destination.source === 'mapbox-searchbox-temporary' && <Notice kind="error">This Mapbox Search Box result is temporary and cannot be stored on a trip. Use the manual map pin with a label you provide; permanent geocoding is not enabled.</Notice>}
+                    <LocationPicker label="Destination address or venue" value={destination} token={mapToken} disabled={request.loading} onEdit={place => edit(() => setDestination(place))} onManualPick={label => setManualTarget({ label, role: 'Destination' })} />
+                    {destination.source === 'mapbox-searchbox-temporary' && <Notice kind="error">Temporary Mapbox search results cannot be saved. Address search is gated; use your own label and pin.</Notice>}
                 </section>
                 <section className="trip-panel privacy-panel"><SectionTitle number="02" title="Private by default" note="Guests join with their own link. They cannot manage the trip or edit anyone else." /><p>Creating a trip does not take a participant seat. Join through the guest link if you want to ride too. The group is limited to six joined people.</p></section>
                 {request.error && <Notice kind="error">{request.error}</Notice>}
@@ -163,7 +163,7 @@ function JoinTrip({ tripId, navigate }: RouteProps) {
             setAttemptBody(record?.body ?? null);
             if (record) {
                 setName(record.body.name);
-                setOrigin({ ...unresolvedPlace(record.body.origin.label), latitude: record.body.origin.latitude, longitude: record.body.origin.longitude, source: placeSourceFromProvenance(record.body.origin.provenance) });
+                setOrigin({ ...unresolvedPlace(record.body.origin.label), latitude: record.body.origin.latitude, longitude: record.body.origin.longitude, source: placeSourceFromLocationSource(record.body.origin.locationSource) });
                 setCanDrive(record.body.canDrive);
                 setPassengerSeats(record.body.passengerSeats);
                 setCanMeet(record.body.canMeet);
@@ -329,15 +329,15 @@ function JoinTrip({ tripId, navigate }: RouteProps) {
                     {attemptUncertain && <><Notice kind="error">{attemptUncertainReason === 'replay' ? 'This attempt already completed; the replay did not create another participant. Continue with the participant link saved in this browser. If none was saved, access cannot be recovered without an account. Starting another attempt may create a second entry.' : 'The earlier request outcome is unknown. Retry with its same saved UUID and submitted details, or start a separate attempt only after acknowledging duplicate risk.'}</Notice>{sameAttemptRetryAllowed && attemptKey && attemptBody && <button className="secondary-button" type="button" onClick={retryJoin} disabled={request.loading}>{request.loading ? 'Checking the same attempt…' : 'Retry the same saved attempt'}</button>}<label className="inline-check risk-check"><input type="checkbox" checked={riskAcknowledged} onChange={e => setRiskAcknowledged(e.target.checked)} /> I understand a new join attempt is separate and could create a duplicate entry.</label><button className="danger-button" type="button" disabled={!riskAcknowledged} onClick={startExplicitNewAttempt}>Start a separate join attempt</button></>}
                     {capacityReached && <Notice kind="error">The six-person trip limit is reached. Ask the organizer before trying again.</Notice>}
                     {!attemptUncertain && !capacityReached && <>
-                        {!hasMapboxToken(mapToken) && <Notice>Mapbox location search is unavailable until a restricted local token is configured. An eligible persistent location is required before joining.</Notice>}
+                        {!hasMapboxToken(mapToken) && <Notice>The Mapbox map is unavailable until a restricted local token is configured. Address search is gated; enter your own label and place a pin.</Notice>}
                         <form className="trip-layout" onSubmit={join}>
                             <div className="trip-form-column">
                                 {attemptKey && <Notice>A join attempt is saved for this invite. Retrying uses its exact saved request body and UUID.</Notice>}
                                 {priorAttemptMayHaveSucceeded && !attemptKey && <Notice kind="error">A join request under an earlier invite may already have added you. Starting this invite creates a separate attempt and may create duplicate membership.</Notice>}
                                 <section className="trip-panel"><SectionTitle number="01" title="Your details" note="Only your entry is editable with your personal link." />
                                     <label>Your name<input required maxLength={80} disabled={Boolean(attemptKey)} value={name} onChange={e => edit(() => setName(e.target.value))} placeholder="Name shown to your group" /></label>
-                                    <LocationPicker label="Your starting address or venue" value={origin} token={mapToken} disabled={Boolean(attemptKey)} onEdit={place => edit(() => setOrigin(place))} onResolved={place => edit(() => setOrigin(place))} onManualPick={label => setManualTarget({ label, role: 'Participant origin' })} />
-                                    {origin.source === 'mapbox-searchbox-temporary' && <Notice kind="error">This Search Box result is temporary and cannot be saved to the trip. Use the manual map pin with a label you provide; permanent geocoding is not enabled.</Notice>}
+                                    <LocationPicker label="Your starting address or venue" value={origin} token={mapToken} disabled={Boolean(attemptKey)} onEdit={place => edit(() => setOrigin(place))} onManualPick={label => setManualTarget({ label, role: 'Participant origin' })} />
+                                    {origin.source === 'mapbox-searchbox-temporary' && <Notice kind="error">Temporary Mapbox search results cannot be saved. Address search is gated; use your own label and pin.</Notice>}
                                     <div className="preference-box"><label className="inline-check"><input type="checkbox" disabled={Boolean(attemptKey)} checked={canDrive} onChange={e => edit(() => { setCanDrive(e.target.checked); if (!e.target.checked) setPassengerSeats(0); })} /> I can drive a car</label>
                                         {canDrive && <><label>Passenger seats available (driver not included)<input disabled={Boolean(attemptKey)} type="number" min="0" max="8" value={passengerSeats} onChange={e => edit(() => setPassengerSeats(Math.min(8, Math.max(0, Number(e.target.value)))))} /></label><label>Maximum extra estimated vehicle time per driver <span className="range-value">{maxDetourMinutes} min</span><input disabled={Boolean(attemptKey)} type="range" min="0" max="1440" step="5" value={maxDetourMinutes} onChange={e => edit(() => setMaxDetourMinutes(Number(e.target.value)))} /></label><p className="field-note">Measured against the driver's direct estimated trip; excludes independent rider travel.</p></>}
                                         <label className="inline-check"><input type="checkbox" disabled={Boolean(attemptKey)} checked={canMeet} onChange={e => edit(() => setCanMeet(e.target.checked))} /> I'm okay traveling independently to a meetup</label>
@@ -359,8 +359,8 @@ function JoinTrip({ tripId, navigate }: RouteProps) {
 function destinationFromSummary(summary: TripSummary): PlaceSelection {
     return demoPlace(summary.destination.label, summary.destination.latitude, summary.destination.longitude);
 }
-function placeSourceFromProvenance(provenance: JoinRequestBody['origin']['provenance']): PlaceSelection['source'] {
-    return provenance === 'userProvided' ? 'user-provided' : provenance === 'mapboxGeocodingPermanent' ? 'mapbox-geocoding-permanent' : 'mapbox-searchbox-temporary';
+function placeSourceFromLocationSource(source: JoinRequestBody['origin']['locationSource']): PlaceSelection['source'] {
+    return source === 'userProvided' ? 'user-provided' : 'mapbox-geocoding-permanent';
 }
 function isJoinCreated(value: unknown): value is { participantId: string; participantCapability: string; revision: number } {
     if (!value || typeof value !== 'object') return false;

@@ -79,8 +79,8 @@ export function ParticipantTrip({ tripId, navigate }: Props) {
         <div className="trip-layout"><div className="trip-form-column">
             <form className="trip-panel" onSubmit={save}><SectionTitle number="01" title="Your details and preferences" note={`Saved trip revision ${saved.revision}. This capability only edits your entry.`} />
                 <label>Your name<input required disabled={request.loading} maxLength={80} value={draft.name} onChange={e => edit(current => ({ ...current, name: e.target.value }))} /></label>
-                <LocationPicker label="Your starting address or venue" value={draft.origin} token={mapToken} disabled={request.loading} onEdit={place => edit(current => ({ ...current, origin: place }))} onResolved={place => edit(current => ({ ...current, origin: place }))} onManualPick={label => setManualTarget({ label, role: 'Participant origin' })} />
-                {draft.origin.source === 'mapbox-searchbox-temporary' && <Notice kind="error">This Search Box result is temporary and cannot be saved to the trip. Use the manual map pin with a label you provide; permanent geocoding is not enabled.</Notice>}
+                <LocationPicker label="Your starting address or venue" value={draft.origin} token={mapToken} disabled={request.loading} onEdit={place => edit(current => ({ ...current, origin: place }))} onManualPick={label => setManualTarget({ label, role: 'Participant origin' })} />
+                {draft.origin.source === 'mapbox-searchbox-temporary' && <Notice kind="error">Temporary Mapbox search results cannot be saved. Address search is gated; use your own label and pin.</Notice>}
                 <div className="preference-box"><label className="inline-check"><input type="checkbox" disabled={request.loading} checked={draft.canDrive} onChange={e => edit(current => ({ ...current, canDrive: e.target.checked, passengerSeats: e.target.checked ? current.passengerSeats : 0 }))} /> I can drive a car</label>
                     {draft.canDrive && <><label>Passenger seats available (driver not included)<input disabled={request.loading} type="number" min="0" max="8" value={draft.passengerSeats} onChange={e => edit(current => ({ ...current, passengerSeats: Math.min(8, Math.max(0, Number(e.target.value))) }))} /></label><label>Maximum extra estimated vehicle time per driver <span className="range-value">{draft.maxDetourMinutes} min</span><input disabled={request.loading} type="range" min="0" max="1440" step="5" value={draft.maxDetourMinutes} onChange={e => edit(current => ({ ...current, maxDetourMinutes: Number(e.target.value) }))} /></label></>}
                     <label className="inline-check"><input type="checkbox" disabled={request.loading} checked={draft.canMeet} onChange={e => edit(current => ({ ...current, canMeet: e.target.checked }))} /> I'm okay traveling independently to a meetup</label>
@@ -145,7 +145,7 @@ function normalizeSelf(value: unknown, tripId: string): SelfView | null {
 }
 
 function locationToPlace(location: LocationDto): PlaceSelection {
-    const source: PlaceSelection['source'] = location.provenance === 'userProvided' ? 'user-provided' : location.provenance === 'mapboxGeocodingPermanent' ? 'mapbox-geocoding-permanent' : 'mapbox-searchbox-temporary';
+    const source: PlaceSelection['source'] = location.locationSource === 'userProvided' ? 'user-provided' : 'mapbox-geocoding-permanent';
     return { label: location.label, latitude: location.latitude, longitude: location.longitude, placeId: null, source };
 }
 

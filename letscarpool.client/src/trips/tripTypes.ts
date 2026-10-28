@@ -1,8 +1,8 @@
-import { locationProvenance, type LocationProvenance, type PlaceSelection } from '../places/placeSelection.ts';
+import { locationSource, type LocationSource, type PlaceSelection } from '../places/placeSelection.ts';
 import { isValidTimeZone } from './dateTime.ts';
 
 export type PlannerLocationDto = { label: string; latitude: number; longitude: number };
-export type LocationDto = PlannerLocationDto & { provenance: LocationProvenance };
+export type LocationDto = PlannerLocationDto & { locationSource: LocationSource };
 export type TripSummary = { tripId: string; name: string; arrivalAt: string; timeZoneId: string; destination: LocationDto; inviteExpiresAt: string };
 export type CreatedTrip = { tripId: string; revision: number; organizerCapability: string; inviteCapability: string; inviteExpiresAt: string; organizerExpiresAt: string };
 export type PlanAlternativeDto = {
@@ -43,20 +43,20 @@ export type TripParticipantDraft = {
 };
 
 export function selectedLocation(place: PlaceSelection): PlannerLocationDto | null {
-    if (!['mapbox-searchbox-temporary', 'mapbox-geocoding-permanent', 'user-provided'].includes(place.source) || !place.label.trim() || place.latitude === null || place.longitude === null || !Number.isFinite(place.latitude) || !Number.isFinite(place.longitude)) return null;
+    if (!['mapbox-geocoding-permanent', 'user-provided'].includes(place.source) || !place.label.trim() || place.latitude === null || place.longitude === null || !Number.isFinite(place.latitude) || !Number.isFinite(place.longitude)) return null;
     return { label: place.label, latitude: place.latitude, longitude: place.longitude };
 }
 
 export function selectedTripLocation(place: PlaceSelection): LocationDto | null {
     const location = selectedLocation(place);
-    const provenance = locationProvenance(place);
-    if (!location || provenance === null || provenance === 'mapboxSearchBoxTemporary') return null;
-    return { ...location, provenance };
+    const source = locationSource(place);
+    if (!location || source === null) return null;
+    return { ...location, locationSource: source };
 }
 
 export function readLocationDto(value: unknown): LocationDto | null {
     if (!isRecord(value) || typeof value.label !== 'string' || !value.label.trim() || !isFiniteNumber(value.latitude) || Math.abs(value.latitude) > 90 || !isFiniteNumber(value.longitude) || Math.abs(value.longitude) > 180
-        || (value.provenance !== 'userProvided' && value.provenance !== 'mapboxSearchBoxTemporary' && value.provenance !== 'mapboxGeocodingPermanent')) return null;
+        || (value.locationSource !== 'userProvided' && value.locationSource !== 'mapboxGeocodingPermanent')) return null;
     return value as LocationDto;
 }
 
