@@ -54,10 +54,8 @@ function readOwnTravelLeg(value: unknown, participantId: string): OwnTravelLeg |
     if (!isRecord(value) || value.participantId !== participantId || !isNonnegative(value.distanceMeters)
         || !isNonnegative(value.durationMinutes) || value.modeAssumption !== 'unspecified'
         || !isRecord(value.from) || value.from.participantId !== participantId || typeof value.from.label !== 'string'
-        || !isCoordinate(value.from.latitude, 90) || !isCoordinate(value.from.longitude, 180)
         || value.from.kind !== 'origin' || !isRecord(value.to) || typeof value.to.participantId !== 'string'
-        || typeof value.to.label !== 'string' || !isCoordinate(value.to.latitude, 90) || !isCoordinate(value.to.longitude, 180)
-        || value.to.kind !== 'rendezvous') return null;
+        || typeof value.to.label !== 'string' || value.to.kind !== 'rendezvous') return null;
     return value as OwnTravelLeg;
 }
 
