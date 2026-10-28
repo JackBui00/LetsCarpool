@@ -21,8 +21,7 @@ jobs:
           ACCEPT_EULA: Y
           MSSQL_PID: Developer
           MSSQL_SA_PASSWORD: ${{ format('LetCarpool_CI_{0}_{1}_Abc!9', github.run_id, github.run_attempt) }}
-        ports:
-          - 1433:1433
+        options: --publish 127.0.0.1:1433:1433
     steps:
       - uses: actions/checkout@v4
 
@@ -66,19 +65,19 @@ jobs:
           sqlcmd_path=/opt/mssql-tools18/bin/sqlcmd
           ready=false
           for attempt in $(seq 1 60); do
-            if docker exec --env SQLCMDPASSWORD "$SQL_CONTAINER_ID" "$sqlcmd_path" -S localhost -U sa -C -b -Q 'SELECT 1' >/dev/null 2>&1; then
+            if docker exec --env SQLCMDPASSWORD "$SQL_CONTAINER_ID" "$sqlcmd_path" -S localhost,1433 -U sa -C -b -Q 'SELECT 1' >/dev/null 2>&1; then
               ready=true
               break
             fi
             sleep 2
           done
           test "$ready" = true || { echo "Disposable SQL Server did not become ready." >&2; exit 1; }
-          docker exec --env SQLCMDPASSWORD "$SQL_CONTAINER_ID" "$sqlcmd_path" -S localhost -U sa -C -b -Q "CREATE DATABASE [$database]"
-          sed "s/REPLACE_WITH_APPROVED_DATABASE_NAME/$database/g" \
+          docker exec --env SQLCMDPASSWORD "$SQL_CONTAINER_ID" "$sqlcmd_path" -S localhost,1433 -U sa -C -b -Q "CREATE DATABASE [$database]"
+          sed '/^:setvar ExpectedDatabase /d' \
             LetsCarpool.Server/Trips/Sql/001_create_trip_store.sql > "$RUNNER_TEMP/001_create_trip_store.sql"
           docker cp "$RUNNER_TEMP/001_create_trip_store.sql" "$SQL_CONTAINER_ID:/tmp/001_create_trip_store.sql"
           docker exec --env SQLCMDPASSWORD "$SQL_CONTAINER_ID" "$sqlcmd_path" \
-            -S localhost -U sa -C -b -d "$database" -i /tmp/001_create_trip_store.sql
+            -S localhost,1433 -U sa -C -b -d "$database" -v ExpectedDatabase="$database" -i /tmp/001_create_trip_store.sql
 
       - name: Run server checks and required SQL integration
         shell: bash
@@ -91,7 +90,7 @@ jobs:
           if ! test_output="$(
             LETS_CARPOOL_RUN_SQL_INTEGRATION=true \
             LETS_CARPOOL_TEST_SQL_CONNECTION="Server=localhost,1433;Initial Catalog=$database;Encrypt=True;TrustServerCertificate=True;User ID=sa;Password=$SQL_CI_PASSWORD;Connect Timeout=15;Pooling=False" \
-            dotnet run --project LetsCarpool.Server.Tests/LetsCarpool.Server.Tests.csproj --configuration Release --no-build --no-restore 2>&1
+            dotnet run --project LetsCarpool.Server.Tests --configuration Release --no-build --no-restore 2>&1
           )"; then
             printf '%s\n' "$test_output"
             exit 1
@@ -124,7 +123,7 @@ jobs:
           fi
           export SQLCMDPASSWORD="$SQL_CI_PASSWORD"
           if ! docker exec --env SQLCMDPASSWORD "$SQL_CONTAINER_ID" /opt/mssql-tools18/bin/sqlcmd \
-            -S localhost -U sa -C -b \
+            -S localhost,1433 -U sa -C -b \
             -Q "IF DB_ID(N'$SQL_TEST_DATABASE') IS NOT NULL BEGIN ALTER DATABASE [$SQL_TEST_DATABASE] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [$SQL_TEST_DATABASE]; END" \
             >/dev/null 2>&1; then
             echo "::warning::Could not explicitly drop the disposable SQL test database; the ephemeral service is removed at job end."
