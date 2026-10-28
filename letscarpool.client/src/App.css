@@ -81,7 +81,7 @@ input[type=range] { width: 100%; accent-color: #397453; }
 .submit-row p { color: #5c7161; font-size: 12px; }
 .primary-button { display: inline-flex; align-items: center; justify-content: center; gap: 19px; min-width: 202px; min-height: 47px; padding: 0 18px; border: 0; border-radius: 7px; background: #245e40; color: white; font: 700 13px Manrope, sans-serif; box-shadow: 0 5px 12px #245e402e; }
 .primary-button:hover:not(:disabled) { background: #194b32; }
-.primary-button:disabled { opacity: .7; cursor: wait; }
+.primary-button:disabled { opacity: .56; cursor: not-allowed; }
 .spinner { width: 14px; height: 14px; border: 2px solid #ffffff70; border-top-color: white; border-radius: 50%; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .notice { display: flex; flex-direction: column; gap: 5px; margin: 8px 0 20px; padding: 15px 18px; border: 1px solid #c9dccb; border-radius: 9px; color: #3f6247; background: #f0f7ef; font-size: 13px; }

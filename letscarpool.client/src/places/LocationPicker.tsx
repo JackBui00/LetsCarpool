@@ -14,6 +14,7 @@ export function LocationPicker({ label, value, apiKey, onEdit, onResolved }: Pro
     useEffect(() => {
         if (!apiKey?.trim() || !host.current) return;
         let active = true;
+        let dispose = () => {};
         loadGoogleMaps(apiKey).then(async maps => {
             if (!active || !host.current) return;
             try {
@@ -32,6 +33,14 @@ export function LocationPicker({ label, value, apiKey, onEdit, onResolved }: Pro
                 };
                 const onInput = () => {
                     if (widget.value !== lastWidgetValue.current) invalidate();
+                };
+                const onKeyDown = (event: Event) => {
+                    const key = (event as KeyboardEvent).key;
+                    const modifiesText = key.length === 1
+                        || key === 'Backspace'
+                        || key === 'Delete'
+                        || ((event as KeyboardEvent).ctrlKey || (event as KeyboardEvent).metaKey) && ['v', 'x'].includes(key.toLowerCase());
+                    if (modifiesText) invalidate();
                 };
                 const onSelect = async (event: Event) => {
                     event.stopPropagation();
@@ -52,14 +61,22 @@ export function LocationPicker({ label, value, apiKey, onEdit, onResolved }: Pro
                     }
                 };
                 widget.addEventListener('input', onInput);
+                widget.addEventListener('keydown', onKeyDown);
                 widget.addEventListener('gmp-select', onSelect);
+                widget.addEventListener('gmp-error', () => { if (active) setUnavailable(true); }, { once: true });
                 host.current.replaceChildren(widget);
                 setReady(true);
+                dispose = () => {
+                    widget.removeEventListener('input', onInput);
+                    widget.removeEventListener('keydown', onKeyDown);
+                    widget.removeEventListener('gmp-select', onSelect);
+                    widget.remove();
+                };
             } catch {
                 if (active) setUnavailable(true);
             }
         }).catch(() => { if (active) setUnavailable(true); });
-        return () => { active = false; };
+        return () => { active = false; dispose(); };
     // Initialize the widget once per picker; user edits are owned by the custom element.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [apiKey]);
