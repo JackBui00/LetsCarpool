@@ -142,7 +142,7 @@ public sealed class TripService
                 ?? throw AccessUnavailable();
             var self = ToParticipantView(participant);
             if (trip.CurrentPlan is null || trip.CurrentPlan.BasedOnRevision != trip.Revision || trip.CurrentPlan.SelectedStrategy is null)
-                return new ParticipantTripView(trip.Id, trip.Name, trip.ArrivalAt, trip.TimeZoneId, trip.Destination, trip.Revision, self, null, null, trip.PlanStale);
+                return new ParticipantTripView(trip.Id, trip.Name, trip.ArrivalAt, trip.TimeZoneId, trip.Destination, trip.InviteExpiresAt, trip.Revision, self, null, null, trip.PlanStale);
 
             var alternative = trip.CurrentPlan.Result.Alternatives.SingleOrDefault(item => item.Strategy == trip.CurrentPlan.SelectedStrategy);
             var group = alternative?.Groups.SingleOrDefault(item => item.Driver.Id == participant.Id || item.Riders.Any(rider => rider.Id == participant.Id));
@@ -151,11 +151,11 @@ public sealed class TripService
                 var assignment = new ParticipantAssignment(trip.CurrentPlan.SelectedStrategy,
                     group.Driver.Id == participant.Id ? "driver" : "rider", group.Driver, group.Riders, group.Stops,
                     group.TotalDistanceMeters, group.VehicleDistanceMeters, group.IndependentTravelDistanceMeters, group.DurationMinutes,
-                    group.IndependentTravelLegs.SingleOrDefault(leg => leg.ParticipantId == participant.Id));
-                return new ParticipantTripView(trip.Id, trip.Name, trip.ArrivalAt, trip.TimeZoneId, trip.Destination, trip.Revision, self, assignment, null, false);
+                    group.IndependentTravelLegs.Where(leg => leg.ParticipantId == participant.Id).ToArray());
+                return new ParticipantTripView(trip.Id, trip.Name, trip.ArrivalAt, trip.TimeZoneId, trip.Destination, trip.InviteExpiresAt, trip.Revision, self, assignment, null, false);
             }
             var reason = alternative?.Unassigned.SingleOrDefault(item => item.ParticipantId == participant.Id)?.Reason;
-            return new ParticipantTripView(trip.Id, trip.Name, trip.ArrivalAt, trip.TimeZoneId, trip.Destination, trip.Revision, self, null, reason, false);
+            return new ParticipantTripView(trip.Id, trip.Name, trip.ArrivalAt, trip.TimeZoneId, trip.Destination, trip.InviteExpiresAt, trip.Revision, self, null, reason, false);
         }, cancellationToken);
 
     public Task<CurrentRevisionResponse> UpdateParticipantAsync(string tripId, string? token, UpdateParticipantRequest request, CancellationToken cancellationToken) =>
@@ -265,7 +265,7 @@ public sealed class TripService
                 throw new TripApiException(409, "Plan generation superseded", "A newer plan request replaced this result.", "revision_conflict", generation.Revision, trip.Revision);
             trip.CurrentPlan = new StoredPlan { Id = planId, BasedOnRevision = generation.Revision, Result = result };
             trip.PlanStale = false;
-            return new GenerateTripPlanResponse(planId, generation.Revision, result.Alternatives, result.SearchOperations, result.SearchOperationLimit);
+            return new GenerateTripPlanResponse(planId, generation.Revision, result);
         }, cancellationToken);
     }
 
@@ -286,13 +286,12 @@ public sealed class TripService
     private static OrganizerTripView ToOrganizerView(StoredTrip trip) => new(
         trip.Id, trip.Name, trip.ArrivalAt, trip.TimeZoneId, trip.Destination, trip.InviteExpiresAt, trip.Revision,
         trip.Participants.Select(ToParticipantView).ToArray(), trip.CurrentPlan?.SelectedStrategy,
-        trip.CurrentPlan is null ? null : new GeneratedTripPlanView(trip.CurrentPlan.Id, trip.CurrentPlan.BasedOnRevision,
-            trip.CurrentPlan.Result.Alternatives, trip.CurrentPlan.Result.SearchOperations, trip.CurrentPlan.Result.SearchOperationLimit),
+        trip.CurrentPlan is null ? null : new GeneratedTripPlanView(trip.CurrentPlan.Id, trip.CurrentPlan.BasedOnRevision, trip.CurrentPlan.Result),
         trip.PlanStale);
 
     private static TripParticipantView ToParticipantView(StoredParticipant participant) => new(
         participant.Id, participant.Name, participant.Origin, participant.CanDrive, participant.PassengerSeats,
-        participant.CanMeet, participant.MaxDetourMinutes, participant.JoinedAt);
+        participant.CanMeet, participant.MaxDetourMinutes, participant.LocationDisclosureAccepted, participant.JoinedAt);
 
     private static StoredTrip FindTrip(TripDatabase database, string tripId)
     {

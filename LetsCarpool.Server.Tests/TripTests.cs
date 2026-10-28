@@ -86,14 +86,14 @@ internal static class TripTests
         var riderB = fixture.Service.JoinAsync(trip.TripId, trip.InviteCapability, Guid.NewGuid().ToString(), fixture.JoinRequest("Rider B", latitude: .02, longitude: .1), CancellationToken.None).GetAwaiter().GetResult();
         var revision = riderB.Revision;
         var generated = fixture.Service.GeneratePlanAsync(trip.TripId, trip.OrganizerCapability, revision, CancellationToken.None).GetAwaiter().GetResult();
-        True(generated.Alternatives.Any(alternative => alternative.Strategy == "rendezvous"));
+        True(generated.Plan.Alternatives.Any(alternative => alternative.Strategy == "rendezvous"));
         fixture.Service.SelectPlanAsync(trip.TripId, generated.PlanId, trip.OrganizerCapability, revision, "rendezvous", CancellationToken.None).GetAwaiter().GetResult();
 
         var guestView = fixture.Service.GetParticipantAsync(trip.TripId, riderA.ParticipantCapability, CancellationToken.None).GetAwaiter().GetResult();
         True(guestView.Assignment is not null);
-        Equal(riderA.ParticipantId, guestView.Assignment!.OwnIndependentTravelLeg!.ParticipantId);
-        True(guestView.Assignment.OwnIndependentTravelLeg.From.Kind == "origin");
-        True(guestView.Assignment.OwnIndependentTravelLeg.To.Kind == "rendezvous");
+        Equal(riderA.ParticipantId, guestView.Assignment!.IndependentTravelLegs.Single().ParticipantId);
+        True(guestView.Assignment.IndependentTravelLegs.Single().From.Kind == "origin");
+        True(guestView.Assignment.IndependentTravelLegs.Single().To.Kind == "rendezvous");
 
         var update = fixture.Service.UpdateParticipantAsync(trip.TripId, riderA.ParticipantCapability, new UpdateParticipantRequest
         {
@@ -173,19 +173,21 @@ internal static class TripTests
         var currentPlan = root.GetProperty("currentPlan");
         True(currentPlan.TryGetProperty("planId", out _));
         Equal(rider.Revision, currentPlan.GetProperty("basedOnRevision").GetInt64());
-        True(currentPlan.GetProperty("alternatives").GetArrayLength() > 0);
-        Equal(currentPlan.GetProperty("searchOperationLimit").GetInt32(), generated.SearchOperationLimit);
+        True(currentPlan.GetProperty("plan").GetProperty("alternatives").GetArrayLength() > 0);
+        Equal(currentPlan.GetProperty("plan").GetProperty("searchOperationLimit").GetInt32(), generated.Plan.SearchOperationLimit);
 
         var guestJson = JsonSerializer.Serialize(fixture.Service.GetParticipantAsync(trip.TripId, rider.ParticipantCapability, CancellationToken.None).GetAwaiter().GetResult(), options);
         using var guest = JsonDocument.Parse(guestJson);
         var guestRoot = guest.RootElement;
+        True(guestRoot.TryGetProperty("inviteExpiresAt", out _));
         True(guestRoot.TryGetProperty("profile", out var profile));
         Equal("Rider", profile.GetProperty("name").GetString());
+        True(profile.GetProperty("locationDisclosureAccepted").GetBoolean());
         True(!guestRoot.TryGetProperty("self", out _));
         var assignment = guestRoot.GetProperty("assignment");
         True(assignment.GetProperty("totalDistanceMeters").GetDouble() > 0);
         True(assignment.GetProperty("durationMinutes").GetDouble() > 0);
-        Equal(rider.ParticipantId, assignment.GetProperty("ownIndependentTravelLeg").GetProperty("participantId").GetString());
+        Equal(rider.ParticipantId, assignment.GetProperty("independentTravelLegs")[0].GetProperty("participantId").GetString());
         True(assignment.GetProperty("independentTravelDistanceMeters").GetDouble() >= 0);
         True(Math.Abs(assignment.GetProperty("vehicleDistanceMeters").GetDouble() + assignment.GetProperty("independentTravelDistanceMeters").GetDouble() - assignment.GetProperty("totalDistanceMeters").GetDouble()) <= 1e-6);
         True(driver.ParticipantId != rider.ParticipantId);
