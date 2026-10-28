@@ -46,6 +46,8 @@
 .assignment-card { margin: 12px 0; padding: 17px; border-radius: 9px; background: #edf5eb; color: #34573b; }
 .assignment-card h2 { margin: 0 0 8px; color: #20482f; font: 700 17px Manrope, sans-serif; }
 .assignment-stops { margin: 12px 0 0; padding-left: 19px; color: #4d6953; font-size: 11px; line-height: 1.7; }
+.assignment-travel-leg { margin: 12px 0 0; padding: 10px 12px; border-radius: 7px; background: #f7faf5; color: #4d6953; font-size: 11px; line-height: 1.55; }
+.assignment-travel-leg strong { color: #294d34; }
 .status-note { margin: 9px 0; color: #576e5b; font-size: 11px; line-height: 1.55; }
 .trip-error { margin: 12px 0; }
 
