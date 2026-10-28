@@ -47,6 +47,7 @@ catch (Exception exception)
     Console.Error.WriteLine($"SQL_INTEGRATION_RESULT=FAIL; reason={exception.GetType().Name}");
     Environment.ExitCode = 1;
 }
+Console.WriteLine("SQL_PROCESS_RESTART_TESTED=false");
 
 static void CapacityAndCoverage()
 {
