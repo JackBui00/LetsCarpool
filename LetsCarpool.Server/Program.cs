@@ -1,4 +1,5 @@
 using LetsCarpool.Server.Data;
+using LetsCarpool.Server.Carpooling;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -6,6 +7,8 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 
 builder.Services.AddControllers();
+builder.Services.AddSingleton<IDistanceProvider, HaversineDistanceProvider>();
+builder.Services.AddSingleton<CarpoolPlanner>();
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
