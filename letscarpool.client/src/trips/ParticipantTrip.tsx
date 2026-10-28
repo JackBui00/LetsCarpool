@@ -3,6 +3,7 @@ import type { PlaceSelection } from '../places/placeSelection';
 import { LocationPicker } from '../places/LocationPicker';
 import { TripMap } from '../places/TripMap';
 import { clearCapability, getCapability } from './capabilitySession';
+import { participantProfileUpdate, type ParticipantProfileDraft } from './participantProfile';
 import { tripApi } from './tripApi';
 import { readAssignmentRole, readLocationDto, readRevision, readTripSummary, selectedTripLocation, type AssignmentRole, type LocationDto, type TripSummary } from './tripTypes';
 import { useGuardedRequest } from './useGuardedRequest';
@@ -10,7 +11,7 @@ import { Notice, SectionTitle } from './TripUi';
 
 const mapToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
 type Props = { tripId: string; navigate: (path: string) => void };
-type Profile = { name: string; origin: PlaceSelection; canDrive: boolean; passengerSeats: number; canMeet: boolean; maxDetourMinutes: number; locationDisclosureAccepted: boolean };
+type Profile = ParticipantProfileDraft;
 type OwnTravelLeg = { participantId: string; from: { label: string; kind: 'origin' }; to: { label: string; kind: 'rendezvous' }; distanceMeters: number; durationMinutes: number; modeAssumption: 'unspecified' };
 type OwnAssignmentGroup = { driver?: { name?: string }; riders?: Array<{ name?: string }>; stops?: Array<{ kind?: string; label?: string }>; independentTravelLegs?: OwnTravelLeg[]; totalDistanceMeters?: number; durationMinutes?: number };
 type OwnAssignment = { role: AssignmentRole; strategy: 'pickup' | 'rendezvous'; group?: OwnAssignmentGroup; independentTravelLegs?: OwnTravelLeg[]; driver?: { name?: string }; riders?: Array<{ name?: string }>; stops?: Array<{ kind?: string; label?: string }>; totalDistanceMeters?: number; durationMinutes?: number };
@@ -46,14 +47,9 @@ export function ParticipantTrip({ tripId, navigate }: Props) {
 
     function save(event: FormEvent) {
         event.preventDefault();
-        if (!saved || !draft || !selectedTripLocation(draft.origin)) return;
-        const body = {
-            expectedRevision: saved.revision,
-            name: draft.name.trim(), origin: selectedTripLocation(draft.origin),
-            canDrive: draft.canDrive, passengerSeats: draft.canDrive ? draft.passengerSeats : 0,
-            canMeet: draft.canMeet, maxDetourMinutes: draft.canDrive ? draft.maxDetourMinutes : 30,
-            locationDisclosureAccepted: draft.locationDisclosureAccepted,
-        };
+        if (!saved || !draft) return;
+        const body = participantProfileUpdate(saved.revision, draft);
+        if (!body) return;
         void request.run(() => tripApi<unknown>(`/${encodeURIComponent(tripId)}/participants/me`, token, { method: 'PUT', body: JSON.stringify(body) }), () => {
             setMessage('Your trip entry was updated. The previous plan and assignment were cleared.');
             void loadSelf();
@@ -91,12 +87,11 @@ export function ParticipantTrip({ tripId, navigate }: Props) {
                     {draft.canDrive && <><label>Passenger seats available (driver not included)<input disabled={request.loading} type="number" min="0" max="8" value={draft.passengerSeats} onChange={e => edit(current => ({ ...current, passengerSeats: Math.min(8, Math.max(0, Number(e.target.value))) }))} /></label><label>Maximum extra estimated vehicle time per driver <span className="range-value">{draft.maxDetourMinutes} min</span><input disabled={request.loading} type="range" min="0" max="1440" step="5" value={draft.maxDetourMinutes} onChange={e => edit(current => ({ ...current, maxDetourMinutes: Number(e.target.value) }))} /></label></>}
                     <label className="inline-check"><input type="checkbox" disabled={request.loading} checked={draft.canMeet} onChange={e => edit(current => ({ ...current, canMeet: e.target.checked }))} /> I'm okay traveling independently to a meetup</label>
                 </div>
-                {!draft.locationDisclosureAccepted && <section className="trip-panel disclosure-panel"><h2>Before sharing your location</h2><p>Your starting place is visible to the organizer and the carpool companions assigned to your group.</p><label className="inline-check"><input type="checkbox" disabled={request.loading} checked={draft.locationDisclosureAccepted} onChange={e => edit(current => ({ ...current, locationDisclosureAccepted: e.target.checked }))} /> I understand who can see my location</label></section>}
-                {draft.locationDisclosureAccepted && <p className="status-note">Your previously accepted location sharing remains recorded for the organizer and assigned carpool companions.</p>}
+                <p className="status-note">Location sharing consent was recorded when you joined. Editing your entry keeps that consent; changed sharing terms would require a new acknowledgment.</p>
                 {dirty && <Notice>Your changes are not saved yet. Saving them clears any plan based on your earlier response.</Notice>}
                 {request.error && <Notice kind="error">{request.error} <button type="button" className="secondary-button" onClick={() => void loadSelf()}>Reload my entry</button></Notice>}
                 {message && <p className="status-note" role="status">{message}</p>}
-                <button className="primary-button" type="submit" disabled={request.loading || !dirty || !draft.locationDisclosureAccepted || !selectedTripLocation(draft.origin)}>{request.loading ? 'Saving…' : 'Save my changes'}</button>
+                <button className="primary-button" type="submit" disabled={request.loading || !dirty || !selectedTripLocation(draft.origin)}>{request.loading ? 'Saving…' : 'Save my changes'}</button>
             </form>
             <section className="trip-panel"><SectionTitle number="02" title="Your saved assignment" note="Only your own assigned group and necessary stops appear here." />
                 {dirty ? <Notice>Your entry has unsaved edits. The assignment below still reflects your last saved response.</Notice> : null}
@@ -124,8 +119,7 @@ function normalizeSelf(value: unknown, tripId: string): SelfView | null {
     const profile = (source.profile && typeof source.profile === 'object' ? source.profile : source) as Record<string, unknown>;
     const trip = readTripSummary(value);
     const revision = readRevision(value);
-    const disclosureAccepted = profile.locationDisclosureAccepted ?? source.locationDisclosureAccepted;
-    if (!trip || trip.tripId !== tripId || revision === null || typeof profile.name !== 'string' || typeof profile.canDrive !== 'boolean' || typeof profile.passengerSeats !== 'number' || !Number.isFinite(profile.passengerSeats) || typeof profile.canMeet !== 'boolean' || typeof profile.maxDetourMinutes !== 'number' || !Number.isFinite(profile.maxDetourMinutes) || typeof disclosureAccepted !== 'boolean') return null;
+    if (!trip || trip.tripId !== tripId || revision === null || typeof profile.name !== 'string' || typeof profile.canDrive !== 'boolean' || typeof profile.passengerSeats !== 'number' || !Number.isFinite(profile.passengerSeats) || typeof profile.canMeet !== 'boolean' || typeof profile.maxDetourMinutes !== 'number' || !Number.isFinite(profile.maxDetourMinutes)) return null;
     const rawOrigin = readLocationDto(profile.origin);
     if (!rawOrigin) return null;
     const origin = locationToPlace(rawOrigin);
@@ -140,7 +134,7 @@ function normalizeSelf(value: unknown, tripId: string): SelfView | null {
     }
     return {
         revision, trip,
-        profile: { name: profile.name, origin, canDrive: profile.canDrive, passengerSeats: profile.passengerSeats, canMeet: profile.canMeet, maxDetourMinutes: profile.maxDetourMinutes, locationDisclosureAccepted: disclosureAccepted },
+        profile: { name: profile.name, origin, canDrive: profile.canDrive, passengerSeats: profile.passengerSeats, canMeet: profile.canMeet, maxDetourMinutes: profile.maxDetourMinutes },
         assignment,
     };
 }

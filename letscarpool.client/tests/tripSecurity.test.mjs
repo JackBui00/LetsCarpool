@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { capabilityStorageKey, getCapability, getOrganizerExpiry, participantContinuation, readCapabilityFragment, setOrganizerExpiry } from '../src/trips/capabilitySession.ts';
 import { tripApi } from '../src/trips/tripApi.ts';
+import { participantProfileUpdate } from '../src/trips/participantProfile.ts';
 import { readAssignmentRole, readCreatedTrip, readGeneratedPlan, readLocationDto, readTripSummary, selectedLocation, selectedTripLocation } from '../src/trips/tripTypes.ts';
 import { classifyJoinFailure, hasTripMayHaveJoined, joinAttemptStorageKey, legacyJoinAttemptKey, markTripMayHaveJoined, readJoinAttempt, removeJoinAttempt, writeJoinAttempt } from '../src/trips/joinAttemptSession.ts';
 import { demoPlace, editPlaceLabel } from '../src/places/placeSelection.ts';
@@ -143,6 +144,22 @@ test('temporary Search Box results cannot be saved to trips but user pins and pe
     assert.equal(selectedTripLocation(editPlaceLabel('Unresolved')), null);
     assert.deepEqual(selectedTripLocation(pin), { label: 'My meetup point', latitude: 37.7, longitude: -122.4, provenance: 'userProvided' });
     assert.deepEqual(selectedTripLocation(permanent)?.provenance, 'mapboxGeocodingPermanent');
+});
+
+test('participant profile edits omit consent and retain only a genuine resolved trip location', () => {
+    const body = participantProfileUpdate(4, {
+        name: ' Sam ', origin: { label: 'Meet point', latitude: 37.7, longitude: -122.4, placeId: null, source: 'user-provided' },
+        canDrive: true, passengerSeats: 2, canMeet: true, maxDetourMinutes: 45,
+    });
+    assert.deepEqual(body, {
+        expectedRevision: 4, name: 'Sam', origin: { label: 'Meet point', latitude: 37.7, longitude: -122.4, provenance: 'userProvided' },
+        canDrive: true, passengerSeats: 2, canMeet: true, maxDetourMinutes: 45,
+    });
+    assert.equal(Object.hasOwn(body, 'locationDisclosureAccepted'), false);
+    assert.equal(participantProfileUpdate(4, {
+        name: 'Sam', origin: { label: 'Temporary', latitude: 37.7, longitude: -122.4, placeId: 'place', source: 'mapbox-searchbox-temporary' },
+        canDrive: false, passengerSeats: 3, canMeet: true, maxDetourMinutes: 30,
+    }), null);
 });
 
 test('persisted demo coordinates are never accepted as a planner location', () => {
