@@ -36,11 +36,30 @@ internal static class SqlTripStoreTests
             ["ConnectionStrings:DefaultConnection"] = "Server=localhost,1433;Initial Catalog=LetsCarpoolTest_0123456789abcdef0123456789abcdef;Encrypt=True;TrustServerCertificate=True;User ID=test;Password=test-only-placeholder"
         }).Build();
         ThrowsInvalidOperation(() => SqlTripStore.ValidateConfiguration(testContainer));
+        var priorOptIn = Environment.GetEnvironmentVariable(RunIntegrationVariable);
+        try
+        {
+            Environment.SetEnvironmentVariable(RunIntegrationVariable, "true");
+            True(!string.IsNullOrWhiteSpace(SqlTripStore.ValidateConfiguration(testContainer, allowTestOnlyLocalSqlAuthentication: true)));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(RunIntegrationVariable, priorOptIn);
+        }
         var nonLocalTestTarget = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["ConnectionStrings:DefaultConnection"] = "Server=remote.example,1433;Initial Catalog=LetsCarpoolTest_0123456789abcdef0123456789abcdef;Encrypt=True;TrustServerCertificate=True;User ID=test;Password=test-only-placeholder"
         }).Build();
-        ThrowsInvalidOperation(() => SqlTripStore.ValidateConfiguration(nonLocalTestTarget, allowTestOnlyLocalSqlAuthentication: true));
+        priorOptIn = Environment.GetEnvironmentVariable(RunIntegrationVariable);
+        try
+        {
+            Environment.SetEnvironmentVariable(RunIntegrationVariable, "true");
+            ThrowsInvalidOperation(() => SqlTripStore.ValidateConfiguration(nonLocalTestTarget, allowTestOnlyLocalSqlAuthentication: true));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(RunIntegrationVariable, priorOptIn);
+        }
     }
 
     public static (bool Executed, int Assertions) RunLocalIntegrationFromEnvironment()
@@ -56,6 +75,8 @@ internal static class SqlTripStoreTests
         {
             assertionCount = 0;
             RunLocalIntegration(connectionString);
+            if (assertionCount == 0)
+                throw new InvalidOperationException("The SQL integration scenario completed without assertions.");
             return (true, assertionCount);
         }
         catch (Exception exception)
@@ -106,6 +127,8 @@ internal static class SqlTripStoreTests
             var riderKey = Guid.NewGuid().ToString();
             var rider = secondService.JoinAsync(created.TripId, created.InviteCapability, riderKey, JoinRequest("rider"), CancellationToken.None).GetAwaiter().GetResult();
             Equal(2, secondService.GetOrganizerAsync(created.TripId, created.OrganizerCapability, CancellationToken.None).GetAwaiter().GetResult().Participants.Count);
+            var reopenedStore = new SqlTripStore(tripStoreConfiguration, allowTestOnlyLocalSqlAuthentication: usesSqlAuthentication);
+            Equal(2, reopenedStore.ReadAsync(database => database.Trips.Single(trip => trip.Id == created.TripId).Participants.Count).GetAwaiter().GetResult());
 
             var replay = ThrowsTripApiException(() => firstService.JoinAsync(created.TripId, created.InviteCapability, riderKey, JoinRequest("duplicate"), CancellationToken.None).GetAwaiter().GetResult());
             Equal("join_already_processed", replay.Code);
