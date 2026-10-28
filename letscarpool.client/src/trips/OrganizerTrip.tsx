@@ -8,6 +8,7 @@ import { isPlanStale, readGeneratedPlan, readLocationDto, readRevision, readTrip
 import { useGuardedRequest } from './useGuardedRequest';
 import { isValidLocalTimeInZone, isValidTimeZone, isoWithZoneOffset, localInputInZone } from './dateTime';
 import { Notice, SectionTitle } from './TripUi';
+import { formatEstimatedMinutes } from './formatEstimates';
 
 const mapToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
 type Props = { tripId: string; navigate: (path: string) => void };
@@ -168,8 +169,8 @@ export function OrganizerTrip({ tripId, navigate }: Props) {
                 <label>Trip timezone (IANA)<input required disabled={request.loading} value={draft.timeZoneId} onChange={e => edit(current => ({ ...current, timeZoneId: e.target.value }))} /><small>Saved timezone: {overview.trip.timeZoneId}.</small></label>
                 {!isValidTimeZone(draft.timeZoneId) && <p className="location-error" role="alert">Enter a valid IANA timezone.</p>}
                 {isValidTimeZone(draft.timeZoneId) && !isValidLocalTimeInZone(draft.arrivalLocal, draft.timeZoneId) && <p className="location-error" role="alert">Choose a local arrival time that exists in this timezone.</p>}
-                <LocationPicker label="Destination address or venue" value={draft.destination} token={mapToken} disabled={request.loading} onEdit={place => edit(current => ({ ...current, destination: place }))} onResolved={place => edit(current => ({ ...current, destination: place }))} onManualPick={label => setManualTarget({ label, role: 'Destination' })} />
-                {draft.destination.source === 'mapbox-searchbox-temporary' && <Notice kind="error">This Search Box result is temporary and cannot be saved to the trip. Use the manual map pin with a label you provide; permanent geocoding is not enabled.</Notice>}
+                <LocationPicker label="Destination address or venue" value={draft.destination} token={mapToken} disabled={request.loading} onEdit={place => edit(current => ({ ...current, destination: place }))} onManualPick={label => setManualTarget({ label, role: 'Destination' })} />
+                {draft.destination.source === 'mapbox-searchbox-temporary' && <Notice kind="error">Temporary Mapbox search results cannot be saved. Address search is gated; use your own label and pin.</Notice>}
                 {dirty && <p className="warning">Unsaved edits invalidate the visible draft plan. Save them before generating a replacement.</p>}
                 {request.error && <Notice kind="error">{request.error} <button type="button" className="secondary-button" onClick={() => void loadOverview()}>Reload current trip</button></Notice>}
                 <button className="primary-button" type="submit" disabled={request.loading || !dirty || !selectedTripLocation(draft.destination) || !isValidTimeZone(draft.timeZoneId) || !isValidLocalTimeInZone(draft.arrivalLocal, draft.timeZoneId)}>{request.loading ? 'Saving…' : 'Save trip details'}</button>
@@ -191,7 +192,7 @@ export function OrganizerTrip({ tripId, navigate }: Props) {
 function PlanOptions({ plan, selectedStrategy, loading, onSelect }: { plan: GeneratedPlan; selectedStrategy: string; loading: boolean; onSelect: (strategy: string) => void }) {
     const alternatives = plan.plan.alternatives;
     return <div className="plan-card"><h3>{selectedStrategy ? `Selected: ${formatStrategy(selectedStrategy)}` : 'Draft plan · not selected'}</h3><p>Based on revision {plan.basedOnRevision}. Exact among supported pickup and rendezvous strategies within the search limit.</p>
-        {alternatives.length === 0 ? <p>No feasible assignment is available with the current responses and seats.</p> : alternatives.map(option => <article className="plan-card" key={option.strategy}><h3>{formatStrategy(option.strategy)} · {formatDistance(option.totalDistanceMeters ?? 0)} · {option.durationMinutes ?? 0} estimated min</h3>
+        {alternatives.length === 0 ? <p>No feasible assignment is available with the current responses and seats.</p> : alternatives.map(option => <article className="plan-card" key={option.strategy}><h3>{formatStrategy(option.strategy)} · {formatDistance(option.totalDistanceMeters ?? 0)} · {formatEstimatedMinutes(option.durationMinutes ?? 0)} estimated min</h3>
             {option.groups?.map((group, index) => <p key={index}><strong>{group.driver?.name ?? 'Driver'} drives</strong> · {(group.riders ?? []).map(rider => rider.name).filter(Boolean).join(', ') || 'driver only'}<br />{(group.stops ?? []).map(stop => `${stop.kind === 'destination' ? 'Destination' : stop.kind === 'rendezvous' ? 'Meetup' : 'Pickup'}: ${stop.label ?? 'stop'}`).join(' → ')}</p>)}
             {(option.unassigned ?? []).map(person => <p key={person.participantId}>Unassigned {person.participantId}: {person.reason}</p>)}
             {(option.warnings ?? []).map((warning, index) => <p key={index}>{warning}</p>)}
@@ -234,7 +235,7 @@ function isRotatedOrganizer(value: unknown): value is { organizerCapability: str
 function dtoPlace(location: LocationDto): PlaceSelection {
     return { label: location.label, latitude: location.latitude, longitude: location.longitude, placeId: null, source: sourceForProvenance(location.provenance) };
 }
-function sourceForProvenance(provenance: LocationDto['provenance']): PlaceSelection['source'] { return provenance === 'userProvided' ? 'user-provided' : provenance === 'mapboxGeocodingPermanent' ? 'mapbox-geocoding-permanent' : 'mapbox-searchbox-temporary'; }
+function sourceForProvenance(source: LocationDto['provenance']): PlaceSelection['source'] { return source === 'userProvided' ? 'user-provided' : 'mapbox-geocoding-permanent'; }
 function formatArrival(value: string, zone: string) { try { return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short', timeZone: zone }).format(new Date(value)); } catch { return value; } }
 function formatStrategy(strategy: string) { return strategy === 'rendezvous' ? 'Meet at a shared point' : strategy === 'pickup' ? 'Pick up along the way' : strategy; }
 function formatDistance(meters: number) { return meters >= 1000 ? `${(meters / 1000).toFixed(1)} km` : `${Math.round(meters)} m`; }

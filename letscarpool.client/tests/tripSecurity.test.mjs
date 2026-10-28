@@ -166,6 +166,7 @@ test('trip location contract round-trips required provenance and rejects missing
     assert.equal(readTripSummary(summary)?.destination.provenance, 'userProvided');
     assert.equal(readLocationDto({ ...destination, provenance: undefined }), null);
     assert.equal(readLocationDto({ ...destination, provenance: 'mapbox-searchbox' }), null);
+    assert.equal(readLocationDto({ ...destination, provenance: 'mapboxSearchBoxTemporary' }), null);
     assert.equal(readTripSummary({ ...summary, destination: { ...destination, provenance: 'unknown' } }), null);
 });
 
@@ -173,8 +174,10 @@ test('temporary Search Box results cannot be saved to trips but user pins and pe
     const temporary = { label: 'Search result', latitude: 37.7, longitude: -122.4, placeId: 'mbx-1', source: 'mapbox-searchbox-temporary' };
     const pin = { label: 'My meetup point', latitude: 37.7, longitude: -122.4, placeId: null, source: 'user-provided' };
     const permanent = { label: 'Stored address', latitude: 37.7, longitude: -122.4, placeId: null, source: 'mapbox-geocoding-permanent' };
-    assert.deepEqual(selectedLocation(temporary), { label: 'Search result', latitude: 37.7, longitude: -122.4 });
+    assert.equal(selectedLocation(temporary), null);
     assert.equal(selectedTripLocation(temporary), null);
+    assert.deepEqual(selectedLocation(pin), { label: 'My meetup point', latitude: 37.7, longitude: -122.4 });
+    assert.deepEqual(selectedLocation(permanent), { label: 'Stored address', latitude: 37.7, longitude: -122.4 });
     assert.equal(selectedTripLocation(demoPlace('Sample', 37.7, -122.4)), null);
     assert.equal(selectedTripLocation(editPlaceLabel('Unresolved')), null);
     assert.deepEqual(selectedTripLocation(pin), { label: 'My meetup point', latitude: 37.7, longitude: -122.4, provenance: 'userProvided' });
