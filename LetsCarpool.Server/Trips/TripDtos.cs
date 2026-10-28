@@ -109,10 +109,10 @@ public sealed record JoinTripResponse(string ParticipantId, string ParticipantCa
 public sealed record InviteTripView(string TripId, string Name, DateTimeOffset ArrivalAt, string TimeZoneId, PlanLocation Destination, DateTimeOffset InviteExpiresAt);
 public sealed record TripParticipantView(string Id, string Name, PlanLocation Origin, bool CanDrive, int PassengerSeats, bool CanMeet, double MaxDetourMinutes, DateTimeOffset JoinedAt);
 public sealed record OrganizerTripView(string TripId, string Name, DateTimeOffset ArrivalAt, string TimeZoneId, PlanLocation Destination, DateTimeOffset InviteExpiresAt, long Revision, IReadOnlyList<TripParticipantView> Participants, string? SelectedStrategy, GeneratedTripPlanView? CurrentPlan, bool PlanStale);
-public sealed record GeneratedTripPlanView(string PlanId, long BasedOnRevision, CarpoolPlanResponse Plan);
+public sealed record GeneratedTripPlanView(string PlanId, long BasedOnRevision, IReadOnlyList<PlanAlternative> Alternatives, int SearchOperations, int SearchOperationLimit);
 public sealed record ParticipantAssignment(string Strategy, string Role, PersonSummary Driver, IReadOnlyList<PersonSummary> Riders, IReadOnlyList<PlanStop> Stops, double TotalDistanceMeters, double VehicleDistanceMeters, double IndependentTravelDistanceMeters, double DurationMinutes, IndependentTravelLeg? OwnIndependentTravelLeg);
 public sealed record ParticipantTripView(string TripId, string Name, DateTimeOffset ArrivalAt, string TimeZoneId, PlanLocation Destination, long Revision, TripParticipantView Profile, ParticipantAssignment? Assignment, string? UnassignedReason, bool PlanStale);
-public sealed record GenerateTripPlanResponse(string PlanId, long BasedOnRevision, CarpoolPlanResponse Plan);
+public sealed record GenerateTripPlanResponse(string PlanId, long BasedOnRevision, IReadOnlyList<PlanAlternative> Alternatives, int SearchOperations, int SearchOperationLimit);
 public sealed record CurrentRevisionResponse(long Revision);
 
 internal static class TripValidation

@@ -86,7 +86,7 @@ internal static class TripTests
         var riderB = fixture.Service.JoinAsync(trip.TripId, trip.InviteCapability, Guid.NewGuid().ToString(), fixture.JoinRequest("Rider B", latitude: .02, longitude: .1), CancellationToken.None).GetAwaiter().GetResult();
         var revision = riderB.Revision;
         var generated = fixture.Service.GeneratePlanAsync(trip.TripId, trip.OrganizerCapability, revision, CancellationToken.None).GetAwaiter().GetResult();
-        True(generated.Plan.Alternatives.Any(alternative => alternative.Strategy == "rendezvous"));
+        True(generated.Alternatives.Any(alternative => alternative.Strategy == "rendezvous"));
         fixture.Service.SelectPlanAsync(trip.TripId, generated.PlanId, trip.OrganizerCapability, revision, "rendezvous", CancellationToken.None).GetAwaiter().GetResult();
 
         var guestView = fixture.Service.GetParticipantAsync(trip.TripId, riderA.ParticipantCapability, CancellationToken.None).GetAwaiter().GetResult();
@@ -173,7 +173,8 @@ internal static class TripTests
         var currentPlan = root.GetProperty("currentPlan");
         True(currentPlan.TryGetProperty("planId", out _));
         Equal(rider.Revision, currentPlan.GetProperty("basedOnRevision").GetInt64());
-        True(currentPlan.GetProperty("plan").GetProperty("alternatives").GetArrayLength() > 0);
+        True(currentPlan.GetProperty("alternatives").GetArrayLength() > 0);
+        Equal(currentPlan.GetProperty("searchOperationLimit").GetInt32(), generated.SearchOperationLimit);
 
         var guestJson = JsonSerializer.Serialize(fixture.Service.GetParticipantAsync(trip.TripId, rider.ParticipantCapability, CancellationToken.None).GetAwaiter().GetResult(), options);
         using var guest = JsonDocument.Parse(guestJson);

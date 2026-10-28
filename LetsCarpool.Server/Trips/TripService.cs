@@ -265,7 +265,7 @@ public sealed class TripService
                 throw new TripApiException(409, "Plan generation superseded", "A newer plan request replaced this result.", "revision_conflict", generation.Revision, trip.Revision);
             trip.CurrentPlan = new StoredPlan { Id = planId, BasedOnRevision = generation.Revision, Result = result };
             trip.PlanStale = false;
-            return new GenerateTripPlanResponse(planId, generation.Revision, result);
+            return new GenerateTripPlanResponse(planId, generation.Revision, result.Alternatives, result.SearchOperations, result.SearchOperationLimit);
         }, cancellationToken);
     }
 
@@ -286,7 +286,8 @@ public sealed class TripService
     private static OrganizerTripView ToOrganizerView(StoredTrip trip) => new(
         trip.Id, trip.Name, trip.ArrivalAt, trip.TimeZoneId, trip.Destination, trip.InviteExpiresAt, trip.Revision,
         trip.Participants.Select(ToParticipantView).ToArray(), trip.CurrentPlan?.SelectedStrategy,
-        trip.CurrentPlan is null ? null : new GeneratedTripPlanView(trip.CurrentPlan.Id, trip.CurrentPlan.BasedOnRevision, trip.CurrentPlan.Result),
+        trip.CurrentPlan is null ? null : new GeneratedTripPlanView(trip.CurrentPlan.Id, trip.CurrentPlan.BasedOnRevision,
+            trip.CurrentPlan.Result.Alternatives, trip.CurrentPlan.Result.SearchOperations, trip.CurrentPlan.Result.SearchOperationLimit),
         trip.PlanStale);
 
     private static TripParticipantView ToParticipantView(StoredParticipant participant) => new(
