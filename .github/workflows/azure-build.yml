@@ -57,6 +57,7 @@ jobs:
           SQL_CONTAINER_ID: ${{ job.services.sqlserver.id }}
         run: |
           set -euo pipefail
+          set +x
           echo "::add-mask::$SQL_CI_PASSWORD"
           test -n "$SQL_CONTAINER_ID"
           database="LetsCarpoolTest_$(python3 -c 'import uuid; print(uuid.uuid4().hex)')"
@@ -79,12 +80,64 @@ jobs:
           docker exec --env SQLCMDPASSWORD "$SQL_CONTAINER_ID" "$sqlcmd_path" \
             -S localhost,1433 -U sa -C -b -d "$database" -v ExpectedDatabase="$database" -i /tmp/001_create_trip_store.sql
 
+      - name: Verify strict SQL rejection controls
+        shell: bash
+        env:
+          SQL_CI_PASSWORD: ${{ format('LetCarpool_CI_{0}_{1}_Abc!9', github.run_id, github.run_attempt) }}
+        run: |
+          set -euo pipefail
+          set +x
+          echo "::add-mask::$SQL_CI_PASSWORD"
+          database="${LETS_CARPOOL_CI_SQL_DATABASE:?Missing unique SQL integration database.}"
+          run_expected_rejection() {
+            local label="$1"
+            local target="$2"
+            local expected_failure="$3"
+            local output
+            if output="$(
+              (
+                export LETS_CARPOOL_RUN_SQL_INTEGRATION=true
+                case "$target" in
+                  missing-connection)
+                    unset LETS_CARPOOL_TEST_SQL_CONNECTION
+                    ;;
+                  non-loopback-host)
+                    export LETS_CARPOOL_TEST_SQL_CONNECTION="Server=nonloopback.invalid,1433;Initial Catalog=$database;Encrypt=True;TrustServerCertificate=True;User ID=sa;Password=$SQL_CI_PASSWORD;Connect Timeout=1"
+                    ;;
+                  malformed-test-database)
+                    export LETS_CARPOOL_TEST_SQL_CONNECTION="Server=localhost,1433;Initial Catalog=LetsCarpoolTest_invalid;Encrypt=True;TrustServerCertificate=True;User ID=sa;Password=$SQL_CI_PASSWORD;Connect Timeout=1"
+                    ;;
+                  unavailable-loopback-service)
+                    export LETS_CARPOOL_TEST_SQL_CONNECTION="Server=localhost,1434;Initial Catalog=$database;Encrypt=True;TrustServerCertificate=True;User ID=sa;Password=$SQL_CI_PASSWORD;Connect Timeout=1"
+                    ;;
+                  *)
+                    echo "Unknown strict SQL negative control." >&2
+                    exit 1
+                    ;;
+                esac
+                dotnet run --project LetsCarpool.Server.Tests --configuration Release --no-build --no-restore
+              ) 2>&1
+            )"; then
+              echo "Strict SQL negative control unexpectedly succeeded: $label" >&2
+              return 1
+            fi
+            if ! grep -Fxq "$expected_failure" <<< "$output"; then
+              echo "Strict SQL negative control did not emit the sanitized FAIL marker: $label" >&2
+              return 1
+            fi
+          }
+          run_expected_rejection missing-connection missing-connection 'SQL_INTEGRATION_RESULT=FAIL; reason=InvalidOperationException'
+          run_expected_rejection non-loopback-host non-loopback-host 'SQL_INTEGRATION_RESULT=FAIL; reason=InvalidOperationException'
+          run_expected_rejection malformed-test-database malformed-test-database 'SQL_INTEGRATION_RESULT=FAIL; reason=InvalidOperationException'
+          run_expected_rejection unavailable-loopback-service unavailable-loopback-service 'SQL_INTEGRATION_RESULT=FAIL; reason=InvalidOperationException'
+
       - name: Run server checks and required SQL integration
         shell: bash
         env:
           SQL_CI_PASSWORD: ${{ format('LetCarpool_CI_{0}_{1}_Abc!9', github.run_id, github.run_attempt) }}
         run: |
           set -euo pipefail
+          set +x
           echo "::add-mask::$SQL_CI_PASSWORD"
           database="${LETS_CARPOOL_CI_SQL_DATABASE:?Missing unique SQL integration database.}"
           if ! test_output="$(
@@ -116,6 +169,7 @@ jobs:
           SQL_CONTAINER_ID: ${{ job.services.sqlserver.id }}
         run: |
           set -euo pipefail
+          set +x
           echo "::add-mask::$SQL_CI_PASSWORD"
           SQL_TEST_DATABASE="${LETS_CARPOOL_CI_SQL_DATABASE:-}"
           if [[ -z "$SQL_CONTAINER_ID" || ! "$SQL_TEST_DATABASE" =~ ^LetsCarpoolTest_[0-9a-f]{32}$ ]]; then
