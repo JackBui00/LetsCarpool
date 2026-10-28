@@ -226,7 +226,8 @@ internal static class SqlTripStoreTests
         }
         finally
         {
-            firstStore.MutateAsync(database => database.Trips.RemoveAll(trip => createdTripIds.Contains(trip.Id)), CancellationToken.None).GetAwaiter().GetResult();
+            if (createdTripIds.Count > 0)
+                firstStore.MutateAsync(database => database.Trips.RemoveAll(trip => createdTripIds.Contains(trip.Id)), CancellationToken.None).GetAwaiter().GetResult();
         }
     }
 
