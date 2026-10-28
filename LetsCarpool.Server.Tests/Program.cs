@@ -10,6 +10,7 @@ var checks = new (string Name, Action Run)[]
     ("validation errors", ValidationErrors),
     ("no drivers and zero distance", NoDriversAndZeroDistance),
     ("detour rejection", DetourRejection),
+    ("objective prioritizes coverage then combined distance", ObjectiveOrdering),
     ("participant bound", ParticipantBound),
     ("operation budget", OperationBudget),
     ("driver availability and per-driver detour", DriverAvailabilityAndDetour),
@@ -138,6 +139,22 @@ static void DetourRejection()
     var alternative = result.Alternatives.Single(item => item.Strategy == "pickup");
     Equal(0, alternative.Groups.Single().Riders.Count);
     Equal("detour", alternative.Unassigned.Single().ParticipantId);
+}
+
+static void ObjectiveOrdering()
+{
+    var result = Plan(
+        [Person("driver", 0, 0, 2), Person("near", 0, .05, canMeet: true), Person("far", .02, .1, canMeet: true)],
+        Location(0, .2));
+    True(result.Alternatives.Count >= 2);
+    for (var index = 1; index < result.Alternatives.Count; index++)
+    {
+        var prior = result.Alternatives[index - 1];
+        var current = result.Alternatives[index];
+        var priorServed = 3 - prior.Unassigned.Count;
+        var currentServed = 3 - current.Unassigned.Count;
+        True(priorServed > currentServed || priorServed == currentServed && prior.TotalDistanceMeters <= current.TotalDistanceMeters + 1e-7);
+    }
 }
 
 static void ParticipantBound()

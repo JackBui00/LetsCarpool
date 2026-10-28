@@ -45,6 +45,7 @@ internal static class TripTests
         ThrowsStatus(404, () => fixture.Service.GetInviteAsync(tripA.TripId, tripA.InviteCapability, CancellationToken.None).GetAwaiter().GetResult());
         fixture.Clock.Advance(TimeSpan.FromDays(43));
         ThrowsStatus(404, () => fixture.Service.GetInviteAsync(tripA.TripId, rotatedInvite.InviteCapability, CancellationToken.None).GetAwaiter().GetResult());
+        ThrowsStatus(404, () => fixture.Service.GetParticipantAsync(tripA.TripId, joinedA.ParticipantCapability, CancellationToken.None).GetAwaiter().GetResult());
         ThrowsStatus(404, () => fixture.Service.GetOrganizerAsync(tripA.TripId, joinedA.ParticipantCapability, CancellationToken.None).GetAwaiter().GetResult());
         ThrowsStatus(404, () => fixture.Service.GetParticipantAsync(tripB.TripId, joinedA.ParticipantCapability, CancellationToken.None).GetAwaiter().GetResult());
         ThrowsStatus(404, () => fixture.Service.GetInviteAsync(tripA.TripId, tripA.OrganizerCapability, CancellationToken.None).GetAwaiter().GetResult());
