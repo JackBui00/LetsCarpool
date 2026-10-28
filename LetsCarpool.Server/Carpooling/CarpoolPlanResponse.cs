@@ -1,6 +1,6 @@
 namespace LetsCarpool.Server.Carpooling;
 
-public sealed record CarpoolPlanResponse(IReadOnlyList<PlanAlternative> Alternatives);
+public sealed record CarpoolPlanResponse(IReadOnlyList<PlanAlternative> Alternatives, int SearchOperations, int SearchOperationLimit);
 public sealed record PlanAlternative(
     string Strategy,
     IReadOnlyList<PlanGroup> Groups,
@@ -21,11 +21,17 @@ public sealed record PlanGroup(
     double DurationMinutes,
     double DriverDetourMinutes);
 public sealed record PersonSummary(string Id, string Name);
-public sealed record PlanStop(string ParticipantId, string Label, double Latitude, double Longitude, string Kind);
-public sealed record IndependentTravelLeg(string ParticipantId, PlanStop From, PlanStop To, double DistanceMeters, double DurationMinutes);
+public sealed record PlanStop(string? ParticipantId, string Label, double Latitude, double Longitude, string Kind);
+public sealed record IndependentTravelLeg(string ParticipantId, PlanStop From, PlanStop To, double DistanceMeters, double DurationMinutes, string ModeAssumption);
 public sealed record UnassignedParticipant(string ParticipantId, string Reason);
 
 public sealed record DistanceEstimate(double DistanceMeters, double DurationMinutes);
+public sealed class PlannerSearchLimitException(int operationLimit)
+    : Exception($"The exact search exceeded its limit of {operationLimit} operations.")
+{
+    public int OperationLimit { get; } = operationLimit;
+}
+
 public interface IDistanceProvider
 {
     DistanceEstimate Estimate(PlanLocation from, PlanLocation to);

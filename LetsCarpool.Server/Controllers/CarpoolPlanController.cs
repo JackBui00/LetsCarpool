@@ -10,5 +10,21 @@ public sealed class CarpoolPlanController(CarpoolPlanner planner) : ControllerBa
     [HttpPost]
     [ProducesResponseType<CarpoolPlanResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
-    public ActionResult<CarpoolPlanResponse> Plan([FromBody] CarpoolPlanRequest request) => Ok(planner.Plan(request));
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status422UnprocessableEntity)]
+    public ActionResult<CarpoolPlanResponse> Plan([FromBody] CarpoolPlanRequest request)
+    {
+        try
+        {
+            return Ok(planner.Plan(request));
+        }
+        catch (PlannerSearchLimitException exception)
+        {
+            return UnprocessableEntity(new ProblemDetails
+            {
+                Title = "The exact planning search limit was exceeded.",
+                Detail = $"The exact search is bounded to {exception.OperationLimit} operations. Try a smaller group or fewer offered vehicles.",
+                Status = StatusCodes.Status422UnprocessableEntity
+            });
+        }
+    }
 }

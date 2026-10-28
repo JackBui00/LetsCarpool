@@ -9,7 +9,8 @@ var checks = new (string Name, Action Run)[]
     ("validation errors", ValidationErrors),
     ("no drivers and zero distance", NoDriversAndZeroDistance),
     ("detour rejection", DetourRejection),
-    ("participant bound", ParticipantBound)
+    ("participant bound", ParticipantBound),
+    ("operation budget", OperationBudget)
 };
 
 foreach (var (name, run) in checks)
@@ -41,6 +42,8 @@ static void PickupOrder()
     Equal("near", group.Stops[0].ParticipantId);
     Equal("far", group.Stops[1].ParticipantId);
     Equal("pickup", group.Stops[0].Kind);
+    Equal("destination", group.Stops[^1].Kind);
+    True(result.SearchOperations <= result.SearchOperationLimit);
 }
 
 static void RendezvousCostAndConsent()
@@ -52,6 +55,8 @@ static void RendezvousCostAndConsent()
     True(group.IndependentTravelDistanceMeters > 0);
     Near(group.VehicleDistanceMeters + group.IndependentTravelDistanceMeters, group.TotalDistanceMeters);
     Equal(2, group.Riders.Count);
+    Equal("destination", group.Stops[^1].Kind);
+    True(group.IndependentTravelLegs.All(leg => leg.ModeAssumption == "unspecified"));
 
     var noConsent = Plan([Person("driver", 0, 0, 1), Person("rider", 0, .1, canMeet: false)], Location(0, .2));
     Equal("pickup", noConsent.Alternatives[0].Strategy);
@@ -106,6 +111,25 @@ static void ParticipantBound()
     var errors = new List<ValidationResult>();
     True(!Validator.TryValidateObject(request, new ValidationContext(request), errors, true));
     True(errors.Any(error => error.ErrorMessage!.Contains($"At most {CarpoolPlanner.MaximumParticipants}", StringComparison.Ordinal)));
+}
+
+static void OperationBudget()
+{
+    var planner = new CarpoolPlanner(new HaversineDistanceProvider(), searchOperationLimit: 1);
+    var request = new CarpoolPlanRequest
+    {
+        Destination = Location(0, .1),
+        Participants = [Person("driver", 0, 0, seats: 1), Person("rider", 0, .05)]
+    };
+    try
+    {
+        planner.Plan(request);
+        throw new InvalidOperationException("Expected planner operation limit to be enforced.");
+    }
+    catch (PlannerSearchLimitException exception)
+    {
+        Equal(1, exception.OperationLimit);
+    }
 }
 
 static CarpoolPlanResponse Plan(PlanParticipant[] participants, PlanLocation destination, double maxDetourMinutes = 30) =>
