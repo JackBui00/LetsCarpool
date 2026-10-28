@@ -163,7 +163,7 @@ function JoinTrip({ tripId, navigate }: RouteProps) {
             setAttemptBody(record?.body ?? null);
             if (record) {
                 setName(record.body.name);
-                setOrigin({ ...unresolvedPlace(record.body.origin.label), latitude: record.body.origin.latitude, longitude: record.body.origin.longitude, source: placeSourceFromLocationProvenance(record.body.origin.locationProvenance) });
+                setOrigin({ ...unresolvedPlace(record.body.origin.label), latitude: record.body.origin.latitude, longitude: record.body.origin.longitude, source: placeSourceFromProvenance(record.body.origin.provenance) });
                 setCanDrive(record.body.canDrive);
                 setPassengerSeats(record.body.passengerSeats);
                 setCanMeet(record.body.canMeet);
@@ -359,7 +359,7 @@ function JoinTrip({ tripId, navigate }: RouteProps) {
 function destinationFromSummary(summary: TripSummary): PlaceSelection {
     return demoPlace(summary.destination.label, summary.destination.latitude, summary.destination.longitude);
 }
-function placeSourceFromLocationProvenance(source: JoinRequestBody['origin']['locationProvenance']): PlaceSelection['source'] {
+function placeSourceFromProvenance(source: JoinRequestBody['origin']['provenance']): PlaceSelection['source'] {
     return source === 'userProvided' ? 'user-provided' : 'mapbox-geocoding-permanent';
 }
 function isJoinCreated(value: unknown): value is { participantId: string; participantCapability: string; revision: number } {

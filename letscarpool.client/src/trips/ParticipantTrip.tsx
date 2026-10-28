@@ -146,7 +146,7 @@ function normalizeSelf(value: unknown, tripId: string): SelfView | null {
 }
 
 function locationToPlace(location: LocationDto): PlaceSelection {
-    const source: PlaceSelection['source'] = location.locationProvenance === 'userProvided' ? 'user-provided' : 'mapbox-geocoding-permanent';
+    const source: PlaceSelection['source'] = location.provenance === 'userProvided' ? 'user-provided' : 'mapbox-geocoding-permanent';
     return { label: location.label, latitude: location.latitude, longitude: location.longitude, placeId: null, source };
 }
 

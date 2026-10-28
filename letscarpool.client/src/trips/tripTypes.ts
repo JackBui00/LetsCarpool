@@ -1,8 +1,8 @@
-import { locationProvenance, type LocationProvenance, type PlaceSelection } from '../places/placeSelection.ts';
+import { provenance, type DurableLocationProvenance, type PlaceSelection } from '../places/placeSelection.ts';
 import { isValidTimeZone } from './dateTime.ts';
 
 export type PlannerLocationDto = { label: string; latitude: number; longitude: number };
-export type LocationDto = PlannerLocationDto & { locationProvenance: LocationProvenance };
+export type LocationDto = PlannerLocationDto & { provenance: DurableLocationProvenance };
 export type TripSummary = { tripId: string; name: string; arrivalAt: string; timeZoneId: string; destination: LocationDto; inviteExpiresAt: string };
 export type CreatedTrip = { tripId: string; revision: number; organizerCapability: string; inviteCapability: string; inviteExpiresAt: string; organizerExpiresAt: string };
 export type PlanAlternativeDto = {
@@ -49,14 +49,14 @@ export function selectedLocation(place: PlaceSelection): PlannerLocationDto | nu
 
 export function selectedTripLocation(place: PlaceSelection): LocationDto | null {
     const location = selectedLocation(place);
-    const source = locationProvenance(place);
+    const source = provenance(place);
     if (!location || source === null) return null;
-    return { ...location, locationProvenance: source };
+    return { ...location, provenance: source };
 }
 
 export function readLocationDto(value: unknown): LocationDto | null {
     if (!isRecord(value) || typeof value.label !== 'string' || !value.label.trim() || !isFiniteNumber(value.latitude) || Math.abs(value.latitude) > 90 || !isFiniteNumber(value.longitude) || Math.abs(value.longitude) > 180
-        || (value.locationProvenance !== 'userProvided' && value.locationProvenance !== 'mapboxGeocodingPermanent')) return null;
+        || (value.provenance !== 'userProvided' && value.provenance !== 'mapboxGeocodingPermanent')) return null;
     return value as LocationDto;
 }
 

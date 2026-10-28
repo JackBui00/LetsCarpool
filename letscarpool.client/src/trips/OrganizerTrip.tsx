@@ -68,7 +68,7 @@ export function OrganizerTrip({ tripId, navigate }: Props) {
         if (draft.arrivalLocal !== localInputInZone(overview.trip.arrivalAt, overview.trip.timeZoneId) || draft.timeZoneId !== overview.trip.timeZoneId) fields.arrivalAt = isoWithZoneOffset(draft.arrivalLocal, draft.timeZoneId);
         if (draft.timeZoneId !== overview.trip.timeZoneId) fields.timeZoneId = draft.timeZoneId;
         const original = overview.trip.destination;
-        if (draft.destination.label !== original.label || draft.destination.latitude !== original.latitude || draft.destination.longitude !== original.longitude || draft.destination.source !== sourceForLocationProvenance(original.locationProvenance)) fields.destination = selectedTripLocation(draft.destination);
+        if (draft.destination.label !== original.label || draft.destination.latitude !== original.latitude || draft.destination.longitude !== original.longitude || draft.destination.source !== sourceForProvenance(original.provenance)) fields.destination = selectedTripLocation(draft.destination);
         if (Object.keys(fields).length === 0) { setDirty(false); return; }
         void request.run(() => tripApi<unknown>(`/${encodeURIComponent(tripId)}/organizer`, token, { method: 'PATCH', body: JSON.stringify({ expectedRevision: overview.revision, ...fields }) }), () => { setMessage('Trip details saved. Any previous plan was cleared.'); void loadOverview(); });
     }
@@ -233,9 +233,9 @@ function isRotatedOrganizer(value: unknown): value is { organizerCapability: str
 }
 
 function dtoPlace(location: LocationDto): PlaceSelection {
-    return { label: location.label, latitude: location.latitude, longitude: location.longitude, placeId: null, source: sourceForLocationProvenance(location.locationProvenance) };
+    return { label: location.label, latitude: location.latitude, longitude: location.longitude, placeId: null, source: sourceForProvenance(location.provenance) };
 }
-function sourceForLocationProvenance(source: LocationDto['locationProvenance']): PlaceSelection['source'] { return source === 'userProvided' ? 'user-provided' : 'mapbox-geocoding-permanent'; }
+function sourceForProvenance(source: LocationDto['provenance']): PlaceSelection['source'] { return source === 'userProvided' ? 'user-provided' : 'mapbox-geocoding-permanent'; }
 function formatArrival(value: string, zone: string) { try { return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short', timeZone: zone }).format(new Date(value)); } catch { return value; } }
 function formatStrategy(strategy: string) { return strategy === 'rendezvous' ? 'Meet at a shared point' : strategy === 'pickup' ? 'Pick up along the way' : strategy; }
 function formatDistance(meters: number) { return meters >= 1000 ? `${(meters / 1000).toFixed(1)} km` : `${Math.round(meters)} m`; }
