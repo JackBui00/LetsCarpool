@@ -78,7 +78,7 @@ test('final participant assignment DTO renders only the caller independent trave
         strategy: 'rendezvous', role: 'rider', driver: { id: 'driver-1', name: 'Driver' }, riders: [{ id: 'rider-1', name: 'Rider' }],
         stops: [{ participantId: 'driver-1', label: 'Meetup', latitude: 37.7, longitude: -122.4, kind: 'rendezvous' }, { participantId: null, label: 'Venue', latitude: 37.8, longitude: -122.3, kind: 'destination' }],
         totalDistanceMeters: 2600, vehicleDistanceMeters: 1800, independentTravelDistanceMeters: 800, durationMinutes: 3.9,
-        independentTravelLegs: [{ participantId: 'rider-1', from: { participantId: 'rider-1', label: 'Rider origin', latitude: 37.71, longitude: -122.42, kind: 'origin' }, to: { participantId: 'driver-1', label: 'Meetup', latitude: 37.7, longitude: -122.4, kind: 'rendezvous' }, distanceMeters: 800, durationMinutes: 1.2, modeAssumption: 'unspecified' }],
+        independentTravelLegs: [{ participantId: 'rider-1', from: { participantId: 'rider-1', label: 'Rider origin', kind: 'origin' }, to: { participantId: 'driver-1', label: 'Meetup', kind: 'rendezvous' }, distanceMeters: 800, durationMinutes: 1.2, modeAssumption: 'unspecified' }],
     };
     assert.deepEqual(readOwnAssignment(dto, 'rider-1'), dto);
     assert.equal(readOwnAssignment({ ...dto, independentTravelLegs: [{ ...dto.independentTravelLegs[0], participantId: 'another-rider' }] }, 'rider-1'), null);
