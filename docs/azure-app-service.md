@@ -1,6 +1,6 @@
 # Azure App Service deployment
 
-This repository builds one Linux App Service package containing the ASP.NET Core API and Vite production assets served from the same origin. CI runs for pushes and pull requests to `main`; it never logs in to Azure. Azure deployment is a separate `workflow_dispatch` workflow, builds the same artifact, waits for the `production` GitHub environment's protection rules, requires typing `letscarpool`, then deploys that artifact without rebuilding it.
+This repository builds one Linux App Service package containing the ASP.NET Core API and Vite production assets served from the same origin. The intended promotion path is feature branch → `dev` → `qa` → `main`. CI runs on pushes to `feature/**`, `dev`, `qa`, and `main`, and on pull requests targeting `dev`, `qa`, or `main`; it never logs in to Azure. Branch names alone do not select different App Services. Azure deployment is a separate `workflow_dispatch` workflow available from `main` only; it builds the same artifact, waits for the `production` GitHub environment's protection rules, requires typing `letscarpool`, then deploys that artifact without rebuilding it.
 
 Deployment intentionally fails closed until external setup and QA are complete. Do not set `AZURE_DEPLOYMENT_ENABLED=true` before the checks below pass. No Azure resource, identity, role assignment, federated credential, GitHub environment, secret, or repository setting is created by these files.
 
@@ -33,7 +33,7 @@ Schema setup is a separate, operator-reviewed activity. Review and run the versi
 
 ## Deploy, smoke test, rollback
 
-After environment protection and all external readiness checks are in place, start **Manually deploy LetsCarpool to Azure** from the Actions tab on `main`, enter `letscarpool`, and approve the protected environment. The build and deploy jobs use the same uploaded zip. Pull requests and pushes only build/test and cannot deploy.
+After environment protection and all external readiness checks are in place, promote the approved build through the feature → dev → qa → main path, then start **Manually deploy LetsCarpool to Azure** from the Actions tab on `main`, enter `letscarpool`, and approve the protected environment. The build and deploy jobs use the same uploaded zip. Pushes and pull requests only build/test and cannot deploy.
 
 After deployment, smoke test `https://letscarpool-bucxd2amgfc5aadu.westus2-01.azurewebsites.net/` for the React shell and static assets, then exercise API health/availability and a complete create/join/organizer flow using synthetic trips only. Verify safe capability handling, schema-2 payload compatibility, location provenance validation, and that SQL failures fail closed. Do not create a trip with private or real travel data. Delete any synthetic trip data only through the approved retention procedure.
 

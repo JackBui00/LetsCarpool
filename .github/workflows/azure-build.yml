@@ -2,9 +2,9 @@ name: Build and verify Azure artifact
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev, qa, 'feature/**']
   pull_request:
-    branches: [main]
+    branches: [dev, qa, main]
   workflow_call:
 
 permissions:
