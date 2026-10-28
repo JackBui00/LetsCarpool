@@ -99,8 +99,8 @@ export function readAssignmentRole(value: unknown): AssignmentRole | null {
 export function readGeneratedPlan(value: unknown): GeneratedPlanDto | null {
     if (!isRecord(value)) return null;
     const { planId, basedOnRevision, plan } = value;
-    if (typeof planId !== 'string' || !planId || !isRevision(basedOnRevision) || !isRecord(plan)
-        || !Number.isSafeInteger(plan.searchOperations) || !Number.isSafeInteger(plan.searchOperationLimit)
+    if (typeof planId !== 'string' || !planId || !isRevision(basedOnRevision)
+        || !isRecord(plan) || !Number.isSafeInteger(plan.searchOperations) || !Number.isSafeInteger(plan.searchOperationLimit)
         || !Array.isArray(plan.alternatives) || !plan.alternatives.every(isPlanAlternative)) return null;
     return value as GeneratedPlanDto;
 }
