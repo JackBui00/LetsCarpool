@@ -17,7 +17,7 @@ export type OwnAssignment = {
     vehicleDistanceMeters: number;
     independentTravelDistanceMeters: number;
     durationMinutes: number;
-    ownIndependentTravelLeg: OwnTravelLeg | null;
+    independentTravelLegs: OwnTravelLeg[];
 };
 
 export type ParticipantAssignmentState = 'stale' | 'assigned' | 'unassigned' | 'no-plan';
@@ -34,17 +34,19 @@ export function readOwnAssignment(value: unknown, participantId: string): OwnAss
         || (value.role !== 'driver' && value.role !== 'rider') || !isNamedPerson(value.driver)
         || !Array.isArray(value.riders) || !value.riders.every(isNamedPerson)
         || !Array.isArray(value.stops) || !value.stops.every(isPlanStop)
+        || !Array.isArray(value.independentTravelLegs)
         || !isNonnegative(value.totalDistanceMeters) || !isNonnegative(value.vehicleDistanceMeters)
         || !isNonnegative(value.independentTravelDistanceMeters) || !isNonnegative(value.durationMinutes)) return null;
-    const ownLeg = value.ownIndependentTravelLeg === null ? null : readOwnTravelLeg(value.ownIndependentTravelLeg, participantId);
-    if (value.ownIndependentTravelLeg !== null && !ownLeg) return null;
-    if (value.strategy === 'pickup' && ownLeg !== null) return null;
+    const legs = value.independentTravelLegs.map(leg => readOwnTravelLeg(leg, participantId));
+    if (!legs.every((leg): leg is OwnTravelLeg => leg !== null)) return null;
+    const expectedLegCount = value.strategy === 'rendezvous' && value.role === 'rider' ? 1 : 0;
+    if (legs.length !== expectedLegCount) return null;
     return {
         strategy: value.strategy, role: value.role, driver: value.driver,
         riders: value.riders, stops: value.stops, totalDistanceMeters: value.totalDistanceMeters,
         vehicleDistanceMeters: value.vehicleDistanceMeters,
         independentTravelDistanceMeters: value.independentTravelDistanceMeters,
-        durationMinutes: value.durationMinutes, ownIndependentTravelLeg: ownLeg,
+        durationMinutes: value.durationMinutes, independentTravelLegs: legs,
     };
 }
 

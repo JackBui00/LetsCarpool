@@ -66,7 +66,7 @@ export function ParticipantTrip({ tripId, navigate }: Props) {
     const assignment = saved.assignment;
     const assignmentState = participantAssignmentState(saved.planStale, assignment, saved.unassignedReason);
     const stops = assignment?.stops ?? [];
-    const independentTravelLegs = assignment?.ownIndependentTravelLeg ? [assignment.ownIndependentTravelLeg] : [];
+    const independentTravelLegs = assignment?.independentTravelLegs ?? [];
     const driver = assignment?.driver;
     const riders = assignment?.riders ?? [];
     const mapPlaces = [
@@ -123,6 +123,7 @@ function normalizeSelf(value: unknown, tripId: string): SelfView | null {
     if (!trip || trip.tripId !== tripId || revision === null || typeof source.planStale !== 'boolean'
         || (source.unassignedReason !== null && typeof source.unassignedReason !== 'string')
         || typeof profile.id !== 'string' || !profile.id || typeof profile.name !== 'string' || typeof profile.joinedAt !== 'string' || !Number.isFinite(Date.parse(profile.joinedAt)) || typeof profile.canDrive !== 'boolean' || typeof profile.passengerSeats !== 'number' || !Number.isInteger(profile.passengerSeats) || profile.passengerSeats < 0 || profile.passengerSeats > 8 || typeof profile.canMeet !== 'boolean' || typeof profile.maxDetourMinutes !== 'number' || !Number.isFinite(profile.maxDetourMinutes) || profile.maxDetourMinutes < 0 || profile.maxDetourMinutes > 1440) return null;
+    if (profile.locationDisclosureAccepted !== true) return null;
     const rawOrigin = readLocationDto(profile.origin);
     if (!rawOrigin) return null;
     const origin = locationToPlace(rawOrigin);

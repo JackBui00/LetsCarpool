@@ -35,7 +35,7 @@ test('canonical organizer links use /trips and #organizer, and strip the fragmen
     assert.deepEqual(replaced, ['/trips/trip-b']);
 });
 
-test('generated and organizer current plans use the direct alternatives response shape', () => {
+test('generated and organizer current plans use the frozen nested plan response shape', () => {
     const alternative = {
         strategy: 'pickup', totalDistanceMeters: 1200, durationMinutes: 1.8,
         distanceSource: 'haversine-estimate', optimality: 'exact-within-limit', unassigned: [], warnings: [],
@@ -46,9 +46,9 @@ test('generated and organizer current plans use the direct alternatives response
             totalDistanceMeters: 1200, durationMinutes: 1.8, driverDetourMinutes: 0,
         }],
     };
-    const generated = { planId: 'plan-1', basedOnRevision: 2, alternatives: [alternative], searchOperations: 12, searchOperationLimit: 100000 };
+    const generated = { planId: 'plan-1', basedOnRevision: 2, plan: { alternatives: [alternative], searchOperations: 12, searchOperationLimit: 100000 } };
     assert.deepEqual(readGeneratedPlan(generated), generated);
-    assert.equal(readGeneratedPlan({ planId: 'plan-1', basedOnRevision: 2, plan: { alternatives: [alternative], searchOperations: 12, searchOperationLimit: 100000 } }), null);
+    assert.equal(readGeneratedPlan({ planId: 'plan-1', basedOnRevision: 2, alternatives: [alternative], searchOperations: 12, searchOperationLimit: 100000 }), null);
 });
 
 test('rendezvous plan accepts only the server-provided independent travel estimate', () => {
@@ -68,26 +68,26 @@ test('rendezvous plan accepts only the server-provided independent travel estima
         strategy: 'rendezvous', totalDistanceMeters: 2950, durationMinutes: 4.4,
         distanceSource: 'haversine-estimate', optimality: 'exact-within-limit', unassigned: [], warnings: [], groups: [group],
     };
-    const response = { planId: 'plan-2', basedOnRevision: 3, alternatives: [alternative], searchOperations: 25, searchOperationLimit: 100000 };
+    const response = { planId: 'plan-2', basedOnRevision: 3, plan: { alternatives: [alternative], searchOperations: 25, searchOperationLimit: 100000 } };
     assert.deepEqual(readGeneratedPlan(response), response);
-    assert.equal(readGeneratedPlan({ ...response, alternatives: [{ ...alternative, groups: [{ ...group, independentTravelLegs: [{ ...leg, modeAssumption: 'walking' }] }] }] }), null);
+    assert.equal(readGeneratedPlan({ ...response, plan: { ...response.plan, alternatives: [{ ...alternative, groups: [{ ...group, independentTravelLegs: [{ ...leg, modeAssumption: 'walking' }] }] }] } }), null);
 });
 
-test('final participant assignment DTO renders only the caller independent leg', () => {
+test('final participant assignment DTO renders only the caller independent travel legs', () => {
     const dto = {
         strategy: 'rendezvous', role: 'rider', driver: { id: 'driver-1', name: 'Driver' }, riders: [{ id: 'rider-1', name: 'Rider' }],
         stops: [{ participantId: 'driver-1', label: 'Meetup', latitude: 37.7, longitude: -122.4, kind: 'rendezvous' }, { participantId: null, label: 'Venue', latitude: 37.8, longitude: -122.3, kind: 'destination' }],
         totalDistanceMeters: 2600, vehicleDistanceMeters: 1800, independentTravelDistanceMeters: 800, durationMinutes: 3.9,
-        ownIndependentTravelLeg: { participantId: 'rider-1', from: { participantId: 'rider-1', label: 'Rider origin', latitude: 37.71, longitude: -122.42, kind: 'origin' }, to: { participantId: 'driver-1', label: 'Meetup', latitude: 37.7, longitude: -122.4, kind: 'rendezvous' }, distanceMeters: 800, durationMinutes: 1.2, modeAssumption: 'unspecified' },
+        independentTravelLegs: [{ participantId: 'rider-1', from: { participantId: 'rider-1', label: 'Rider origin', latitude: 37.71, longitude: -122.42, kind: 'origin' }, to: { participantId: 'driver-1', label: 'Meetup', latitude: 37.7, longitude: -122.4, kind: 'rendezvous' }, distanceMeters: 800, durationMinutes: 1.2, modeAssumption: 'unspecified' }],
     };
     assert.deepEqual(readOwnAssignment(dto, 'rider-1'), dto);
-    assert.equal(readOwnAssignment({ ...dto, ownIndependentTravelLeg: { ...dto.ownIndependentTravelLeg, participantId: 'another-rider' } }, 'rider-1'), null);
-    assert.equal(readOwnAssignment({ ...dto, ownIndependentTravelLeg: { ...dto.ownIndependentTravelLeg, modeAssumption: 'walking' } }, 'rider-1'), null);
-    assert.equal(readOwnAssignment({ ...dto, ownIndependentTravelLeg: null, strategy: 'pickup' }, 'rider-1')?.ownIndependentTravelLeg, null);
+    assert.equal(readOwnAssignment({ ...dto, independentTravelLegs: [{ ...dto.independentTravelLegs[0], participantId: 'another-rider' }] }, 'rider-1'), null);
+    assert.equal(readOwnAssignment({ ...dto, independentTravelLegs: [{ ...dto.independentTravelLegs[0], modeAssumption: 'walking' }] }, 'rider-1'), null);
+    assert.equal(readOwnAssignment({ ...dto, independentTravelLegs: [], strategy: 'pickup' }, 'rider-1')?.independentTravelLegs.length, 0);
 });
 
 test('server planStale prevents selection even when revision metadata matches', () => {
-    const generated = { planId: 'plan-1', basedOnRevision: 4, alternatives: [], searchOperations: 1, searchOperationLimit: 100000 };
+    const generated = { planId: 'plan-1', basedOnRevision: 4, plan: { alternatives: [], searchOperations: 1, searchOperationLimit: 100000 } };
     assert.equal(isPlanStale(true, false, 4, generated), true);
     assert.equal(isPlanStale(false, false, 5, generated), true);
     assert.equal(isPlanStale(false, true, 4, generated), true);
@@ -99,7 +99,7 @@ test('participant view distinguishes stale, assigned, unassigned, and no-plan st
         strategy: 'pickup', role: 'driver', driver: { id: 'd1', name: 'Driver' }, riders: [],
         stops: [{ participantId: null, label: 'Venue', latitude: 37.8, longitude: -122.3, kind: 'destination' }],
         totalDistanceMeters: 1000, vehicleDistanceMeters: 1000, independentTravelDistanceMeters: 0, durationMinutes: 1.5,
-        ownIndependentTravelLeg: null,
+        independentTravelLegs: [],
     }, 'd1');
     assert.equal(participantAssignmentState(true, assignment, null), 'stale');
     assert.equal(participantAssignmentState(false, assignment, null), 'assigned');
