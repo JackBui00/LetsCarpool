@@ -32,17 +32,20 @@ test('canonical organizer links use /trips and #organizer, and strip the fragmen
     assert.deepEqual(replaced, ['/trips/trip-b']);
 });
 
-test('trip plan response uses top-level alternatives and rejects nested planner wrappers', () => {
+test('trip plan response wraps the existing planner DTO and rejects an unwrapped response', () => {
     const alternative = {
         strategy: 'pickup', totalDistanceMeters: 1200, durationMinutes: 1.8,
-        unassigned: [], warnings: [],
+        distanceSource: 'haversine-estimate', optimality: 'exact-within-limit', unassigned: [], warnings: [],
         groups: [{
             driver: { id: 'd1', name: 'Driver' }, riders: [{ id: 'r1', name: 'Rider' }],
             stops: [{ participantId: 'r1', label: 'Home', latitude: 37.7, longitude: -122.4, kind: 'pickup' }, { participantId: null, label: 'Venue', latitude: 37.8, longitude: -122.3, kind: 'destination' }],
+            independentTravelLegs: [], vehicleDistanceMeters: 1200, independentTravelDistanceMeters: 0,
+            totalDistanceMeters: 1200, durationMinutes: 1.8, driverDetourMinutes: 0,
         }],
     };
-    assert.deepEqual(readGeneratedPlan({ planId: 'plan-1', basedOnRevision: 2, alternatives: [alternative] }), { planId: 'plan-1', basedOnRevision: 2, alternatives: [alternative] });
-    assert.equal(readGeneratedPlan({ planId: 'plan-1', basedOnRevision: 2, plan: { alternatives: [alternative] } }), null);
+    const generated = { planId: 'plan-1', basedOnRevision: 2, plan: { alternatives: [alternative], searchOperations: 12, searchOperationLimit: 100000 } };
+    assert.deepEqual(readGeneratedPlan(generated), generated);
+    assert.equal(readGeneratedPlan({ planId: 'plan-1', basedOnRevision: 2, alternatives: [alternative] }), null);
 });
 
 test('role API calls use bearer header and keep capability out of request URL', async () => {
