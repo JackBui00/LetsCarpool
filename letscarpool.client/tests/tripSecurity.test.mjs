@@ -3,7 +3,8 @@ import test from 'node:test';
 import { capabilityStorageKey, getCapability, getOrganizerExpiry, participantContinuation, readCapabilityFragment, setOrganizerExpiry } from '../src/trips/capabilitySession.ts';
 import { tripApi } from '../src/trips/tripApi.ts';
 import { participantProfileUpdate } from '../src/trips/participantProfile.ts';
-import { readAssignmentRole, readCreatedTrip, readGeneratedPlan, readLocationDto, readTripSummary, selectedLocation, selectedTripLocation } from '../src/trips/tripTypes.ts';
+import { isPlanStale, readAssignmentRole, readCreatedTrip, readGeneratedPlan, readLocationDto, readTripSummary, selectedLocation, selectedTripLocation } from '../src/trips/tripTypes.ts';
+import { readOwnAssignment } from '../src/trips/participantAssignment.ts';
 import { classifyJoinFailure, hasTripMayHaveJoined, joinAttemptStorageKey, legacyJoinAttemptKey, markTripMayHaveJoined, readJoinAttempt, removeJoinAttempt, writeJoinAttempt } from '../src/trips/joinAttemptSession.ts';
 import { demoPlace, editPlaceLabel } from '../src/places/placeSelection.ts';
 
@@ -70,6 +71,27 @@ test('rendezvous plan accepts only the server-provided independent travel estima
     const response = { planId: 'plan-2', basedOnRevision: 3, plan: { alternatives: [alternative], searchOperations: 25, searchOperationLimit: 100000 } };
     assert.deepEqual(readGeneratedPlan(response), response);
     assert.equal(readGeneratedPlan({ ...response, plan: { ...response.plan, alternatives: [{ ...alternative, groups: [{ ...group, independentTravelLegs: [{ ...leg, modeAssumption: 'walking' }] }] }] } }), null);
+});
+
+test('final participant assignment DTO renders only the caller independent leg', () => {
+    const dto = {
+        strategy: 'rendezvous', role: 'rider', driver: { id: 'driver-1', name: 'Driver' }, riders: [{ id: 'rider-1', name: 'Rider' }],
+        stops: [{ participantId: 'driver-1', label: 'Meetup', latitude: 37.7, longitude: -122.4, kind: 'rendezvous' }, { participantId: null, label: 'Venue', latitude: 37.8, longitude: -122.3, kind: 'destination' }],
+        totalDistanceMeters: 2600, vehicleDistanceMeters: 1800, independentTravelDistanceMeters: 800, durationMinutes: 3.9,
+        ownIndependentTravelLeg: { participantId: 'rider-1', from: { participantId: 'rider-1', label: 'Rider origin', latitude: 37.71, longitude: -122.42, kind: 'origin' }, to: { participantId: 'driver-1', label: 'Meetup', latitude: 37.7, longitude: -122.4, kind: 'rendezvous' }, distanceMeters: 800, durationMinutes: 1.2, modeAssumption: 'unspecified' },
+    };
+    assert.deepEqual(readOwnAssignment(dto, 'rider-1'), dto);
+    assert.equal(readOwnAssignment({ ...dto, ownIndependentTravelLeg: { ...dto.ownIndependentTravelLeg, participantId: 'another-rider' } }, 'rider-1'), null);
+    assert.equal(readOwnAssignment({ ...dto, ownIndependentTravelLeg: { ...dto.ownIndependentTravelLeg, modeAssumption: 'walking' } }, 'rider-1'), null);
+    assert.equal(readOwnAssignment({ ...dto, ownIndependentTravelLeg: null, strategy: 'pickup' }, 'rider-1')?.ownIndependentTravelLeg, null);
+});
+
+test('server planStale prevents selection even when revision metadata matches', () => {
+    const generated = { planId: 'plan-1', basedOnRevision: 4, plan: { alternatives: [], searchOperations: 1, searchOperationLimit: 100000 } };
+    assert.equal(isPlanStale(true, false, 4, generated), true);
+    assert.equal(isPlanStale(false, false, 5, generated), true);
+    assert.equal(isPlanStale(false, true, 4, generated), true);
+    assert.equal(isPlanStale(false, false, 4, generated), false);
 });
 
 test('role API calls use bearer header and keep capability out of request URL', async () => {

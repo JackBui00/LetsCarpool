@@ -4,7 +4,7 @@ import { LocationPicker } from '../places/LocationPicker';
 import { TripMap } from '../places/TripMap';
 import { clearCapability, getCapability, getOrganizerExpiry, setCapability, setOrganizerExpiry } from './capabilitySession';
 import { tripApi } from './tripApi';
-import { readGeneratedPlan, readLocationDto, readRevision, readTripSummary, selectedTripLocation, type GeneratedPlanDto, type LocationDto, type TripSummary } from './tripTypes';
+import { isPlanStale, readGeneratedPlan, readLocationDto, readRevision, readTripSummary, selectedTripLocation, type GeneratedPlanDto, type LocationDto, type TripSummary } from './tripTypes';
 import { useGuardedRequest } from './useGuardedRequest';
 import { isValidLocalTimeInZone, isValidTimeZone, isoWithZoneOffset, localInputInZone } from './dateTime';
 import { Notice, SectionTitle } from './TripUi';
@@ -13,7 +13,7 @@ const mapToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
 type Props = { tripId: string; navigate: (path: string) => void };
 type Person = { participantId?: string; id?: string; name?: string; origin?: LocationDto; canDrive?: boolean; passengerSeats?: number; canMeet?: boolean; status?: string };
 type GeneratedPlan = GeneratedPlanDto;
-type Overview = { trip: TripSummary; revision: number; participants: Person[]; currentPlan?: GeneratedPlan; selectedStrategy?: string; inviteCapability?: string; organizerExpiresAt?: string };
+type Overview = { trip: TripSummary; revision: number; participants: Person[]; currentPlan?: GeneratedPlan; planStale: boolean; selectedStrategy?: string; inviteCapability?: string; organizerExpiresAt?: string };
 
 export function OrganizerTrip({ tripId, navigate }: Props) {
     const [token, setToken] = useState(() => getCapability('organizer', tripId));
@@ -82,12 +82,13 @@ export function OrganizerTrip({ tripId, navigate }: Props) {
         }, value => {
             setPlan(value);
             setSelectedStrategy('');
+            setOverview(current => current ? { ...current, planStale: false } : current);
             setMessage(`Draft plan generated from trip revision ${value.basedOnRevision}.`);
         });
     }
 
     function selectPlan(strategy: string) {
-        if (!overview || !plan || dirty || plan.basedOnRevision !== overview.revision) return;
+        if (!overview || !plan || overview.planStale || dirty || plan.basedOnRevision !== overview.revision) return;
         void request.run(() => tripApi<unknown>(`/${encodeURIComponent(tripId)}/plans/${encodeURIComponent(plan.planId)}/select`, token, { method: 'POST', body: JSON.stringify({ expectedRevision: overview.revision, strategy }) }), () => {
             setSelectedStrategy(strategy);
             setMessage(`${formatStrategy(strategy)} selected for the current revision.`);
@@ -146,7 +147,7 @@ export function OrganizerTrip({ tripId, navigate }: Props) {
     if (!overview || !draft) return <section className="trip-panel"><SectionTitle number="01" title="Organizer workspace" note="Loading private trip details…" />{request.error && <Notice kind="error">{request.error}</Notice>}</section>;
 
     const activePlan = plan ?? overview.currentPlan ?? null;
-    const planStale = Boolean(activePlan && (dirty || activePlan.basedOnRevision !== overview.revision));
+    const planStale = isPlanStale(overview.planStale, dirty, overview.revision, activePlan);
     const mapLocations = [
         { id: 'destination', label: 'Shared destination', role: 'Destination' as const, place: draft.destination },
         ...overview.participants.map((person, index) => ({ id: person.participantId ?? person.id ?? `participant-${index}`, label: person.name || `Participant ${index + 1}`, role: 'Participant origin' as const, place: person.origin?.latitude != null && person.origin.longitude != null ? dtoPlace(person.origin) : { ...demoPlace('', 0, 0), latitude: null, longitude: null, source: 'unresolved' as const } })),
@@ -204,7 +205,7 @@ function normalizeOverview(value: unknown, tripId: string): Overview | null {
     const source = value as Record<string, unknown>;
     const trip = readTripSummary(value);
     const revision = readRevision(value);
-    if (!trip || revision === null || trip.tripId !== tripId) return null;
+    if (!trip || revision === null || trip.tripId !== tripId || typeof source.planStale !== 'boolean') return null;
     const rawParticipants = source.participants;
     if (!Array.isArray(rawParticipants)) return null;
     if (!rawParticipants.every(person => person && typeof person === 'object' && !Array.isArray(person) && readLocationDto((person as Record<string, unknown>).origin))) return null;
@@ -213,7 +214,7 @@ function normalizeOverview(value: unknown, tripId: string): Overview | null {
     const currentPlan = rawPlan && typeof rawPlan === 'object' ? readGeneratedPlan(rawPlan) ?? undefined : undefined;
     return {
         trip: { ...trip, tripId: trip.tripId || tripId }, revision, participants,
-        currentPlan, selectedStrategy: typeof source.selectedStrategy === 'string' ? source.selectedStrategy : undefined,
+        currentPlan, planStale: source.planStale, selectedStrategy: typeof source.selectedStrategy === 'string' ? source.selectedStrategy : undefined,
         inviteCapability: typeof source.inviteCapability === 'string' ? source.inviteCapability : undefined,
         organizerExpiresAt: typeof source.organizerExpiresAt === 'string' ? source.organizerExpiresAt : undefined,
     };

@@ -105,6 +105,10 @@ export function readGeneratedPlan(value: unknown): GeneratedPlanDto | null {
     return value as GeneratedPlanDto;
 }
 
+export function isPlanStale(serverPlanStale: boolean, hasLocalEdits: boolean, currentRevision: number, plan: GeneratedPlanDto | null): boolean {
+    return serverPlanStale || hasLocalEdits || Boolean(plan && plan.basedOnRevision !== currentRevision);
+}
+
 function isPlanAlternative(value: unknown): value is PlanAlternativeDto {
     if (!isRecord(value) || (value.strategy !== 'pickup' && value.strategy !== 'rendezvous') || !isFiniteNumber(value.totalDistanceMeters) || !isFiniteNumber(value.durationMinutes)
         || value.distanceSource !== 'haversine-estimate' || value.optimality !== 'exact-within-limit'

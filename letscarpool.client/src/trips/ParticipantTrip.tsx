@@ -5,16 +5,14 @@ import { TripMap } from '../places/TripMap';
 import { clearCapability, getCapability } from './capabilitySession';
 import { participantProfileUpdate, type ParticipantProfileDraft } from './participantProfile';
 import { tripApi } from './tripApi';
-import { readAssignmentRole, readLocationDto, readRevision, readTripSummary, selectedTripLocation, type AssignmentRole, type LocationDto, type TripSummary } from './tripTypes';
+import { readLocationDto, readRevision, readTripSummary, selectedTripLocation, type LocationDto, type TripSummary } from './tripTypes';
+import { readOwnAssignment, type OwnAssignment, type OwnTravelLeg } from './participantAssignment';
 import { useGuardedRequest } from './useGuardedRequest';
 import { Notice, SectionTitle } from './TripUi';
 
 const mapToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
 type Props = { tripId: string; navigate: (path: string) => void };
 type Profile = ParticipantProfileDraft;
-type OwnTravelLeg = { participantId: string; from: { label: string; kind: 'origin' }; to: { label: string; kind: 'rendezvous' }; distanceMeters: number; durationMinutes: number; modeAssumption: 'unspecified' };
-type OwnAssignmentGroup = { driver?: { name?: string }; riders?: Array<{ name?: string }>; stops?: Array<{ kind?: string; label?: string }>; independentTravelLegs?: OwnTravelLeg[]; totalDistanceMeters?: number; durationMinutes?: number };
-type OwnAssignment = { role: AssignmentRole; strategy: 'pickup' | 'rendezvous'; group?: OwnAssignmentGroup; independentTravelLegs?: OwnTravelLeg[]; driver?: { name?: string }; riders?: Array<{ name?: string }>; stops?: Array<{ kind?: string; label?: string }>; totalDistanceMeters?: number; durationMinutes?: number };
 type SelfView = { revision: number; trip: TripSummary; profile: Profile; assignment?: OwnAssignment | null };
 
 export function ParticipantTrip({ tripId, navigate }: Props) {
@@ -66,11 +64,10 @@ export function ParticipantTrip({ tripId, navigate }: Props) {
     if (!saved || !draft) return <section className="trip-panel"><SectionTitle number="01" title="Your trip entry" note="Loading your private participant view…" />{request.error && <><Notice kind="error">{request.error}</Notice><button className="secondary-button" onClick={leaveThisTab}>Clear this participant access</button></>}</section>;
 
     const assignment = saved.assignment;
-    const group = assignment?.group;
-    const stops = group?.stops ?? assignment?.stops ?? [];
-    const independentTravelLegs = group?.independentTravelLegs ?? assignment?.independentTravelLegs ?? [];
-    const driver = group?.driver ?? assignment?.driver;
-    const riders = group?.riders ?? assignment?.riders ?? [];
+    const stops = assignment?.stops ?? [];
+    const independentTravelLegs = assignment?.ownIndependentTravelLeg ? [assignment.ownIndependentTravelLeg] : [];
+    const driver = assignment?.driver;
+    const riders = assignment?.riders ?? [];
     const mapPlaces = [
         { id: 'destination', label: 'Shared destination', role: 'Destination' as const, place: locationToPlace(saved.trip.destination) },
         { id: 'origin', label: 'Your starting place', role: 'Participant origin' as const, place: draft.origin },
@@ -95,7 +92,7 @@ export function ParticipantTrip({ tripId, navigate }: Props) {
             </form>
             <section className="trip-panel"><SectionTitle number="02" title="Your saved assignment" note="Only your own assigned group and necessary stops appear here." />
                 {dirty ? <Notice>Your entry has unsaved edits. The assignment below still reflects your last saved response.</Notice> : null}
-                {!assignment ? <p className="status-note">The organizer has not selected a current plan yet.</p> : <OwnAssignmentCard assignment={assignment} driver={driver} riders={riders} stops={stops} independentTravelLegs={independentTravelLegs} totalDistanceMeters={assignment.totalDistanceMeters ?? group?.totalDistanceMeters} durationMinutes={assignment.durationMinutes ?? group?.durationMinutes} />}
+                {!assignment ? <p className="status-note">The organizer has not selected a current plan yet.</p> : <OwnAssignmentCard assignment={assignment} driver={driver} riders={riders} stops={stops} independentTravelLegs={independentTravelLegs} totalDistanceMeters={assignment.totalDistanceMeters} durationMinutes={assignment.durationMinutes} />}
                 <p className="status-note">Distances are estimates, not road routing. Arrival time is coordination information and is not guaranteed.</p>
             </section>
         </div><TripMap token={mapToken} selecting={manualTarget} onPinSelect={point => { if (!manualTarget) return; edit(current => ({ ...current, origin: { label: manualTarget.label, latitude: point.latitude, longitude: point.longitude, placeId: null, source: 'user-provided' } })); setManualTarget(null); }} locations={mapPlaces} /></div>
@@ -119,7 +116,7 @@ function normalizeSelf(value: unknown, tripId: string): SelfView | null {
     const profile = (source.profile && typeof source.profile === 'object' ? source.profile : source) as Record<string, unknown>;
     const trip = readTripSummary(value);
     const revision = readRevision(value);
-    if (!trip || trip.tripId !== tripId || revision === null || typeof profile.name !== 'string' || typeof profile.canDrive !== 'boolean' || typeof profile.passengerSeats !== 'number' || !Number.isFinite(profile.passengerSeats) || typeof profile.canMeet !== 'boolean' || typeof profile.maxDetourMinutes !== 'number' || !Number.isFinite(profile.maxDetourMinutes)) return null;
+    if (!trip || trip.tripId !== tripId || revision === null || typeof profile.id !== 'string' || !profile.id || typeof profile.name !== 'string' || typeof profile.joinedAt !== 'string' || !Number.isFinite(Date.parse(profile.joinedAt)) || typeof profile.canDrive !== 'boolean' || typeof profile.passengerSeats !== 'number' || !Number.isInteger(profile.passengerSeats) || profile.passengerSeats < 0 || profile.passengerSeats > 8 || typeof profile.canMeet !== 'boolean' || typeof profile.maxDetourMinutes !== 'number' || !Number.isFinite(profile.maxDetourMinutes) || profile.maxDetourMinutes < 0 || profile.maxDetourMinutes > 1440) return null;
     const rawOrigin = readLocationDto(profile.origin);
     if (!rawOrigin) return null;
     const origin = locationToPlace(rawOrigin);
@@ -128,9 +125,8 @@ function normalizeSelf(value: unknown, tripId: string): SelfView | null {
     if (rawAssignment !== undefined && rawAssignment !== null) {
         if (typeof rawAssignment !== 'object' || Array.isArray(rawAssignment) || 'alternatives' in rawAssignment) return null;
         const candidate = rawAssignment as Record<string, unknown>;
-        const role = readAssignmentRole(candidate);
-        if (!role || (candidate.strategy !== 'pickup' && candidate.strategy !== 'rendezvous')) return null;
-        assignment = candidate as unknown as OwnAssignment;
+        assignment = readOwnAssignment(candidate, profile.id);
+        if (!assignment) return null;
     }
     return {
         revision, trip,
