@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { demoPlace, editPlaceLabel, hasGoogleMapsKey, isPlaceResolved, isPlanReady, loadGoogleMaps } from '../src/places/placeSelection.ts';
+import { demoPlace, editPlaceLabel, enabledGoogleMapsKey, hasGoogleMapsKey, isPlaceResolved, isPlanReady, loadGoogleMaps } from '../src/places/placeSelection.ts';
 
 test('typing over a selected place clears its coordinates and place id', () => {
     const edited = editPlaceLabel('Changed address');
@@ -18,4 +18,10 @@ test('demo locations are explicitly resolved and keyless search is not loaded', 
     assert.equal(isPlanReady('configured-key', [editPlaceLabel('unselected address')]), false);
     assert.equal(isPlanReady('configured-key', [demoPlace('Demo venue', 37.7, -122.4)]), true);
     await assert.rejects(loadGoogleMaps(undefined), /not configured/);
+});
+
+test('Maps API key is ignored unless explicit provider opt-in is enabled', () => {
+    assert.equal(enabledGoogleMapsKey('false', 'test-key'), undefined);
+    assert.equal(enabledGoogleMapsKey(undefined, 'test-key'), undefined);
+    assert.equal(enabledGoogleMapsKey('true', 'test-key'), 'test-key');
 });

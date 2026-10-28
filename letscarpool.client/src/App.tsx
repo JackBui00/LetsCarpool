@@ -1,6 +1,6 @@
 import { useRef, useState, type FormEvent } from 'react';
 import { PlanRequestRevision, runPlanRequest } from './planRequestLifecycle.ts';
-import { demoPlace, hasGoogleMapsKey, isPlaceResolved, isPlanReady, unresolvedPlace, type PlaceSelection } from './places/placeSelection';
+import { demoPlace, enabledGoogleMapsKey, hasGoogleMapsKey, isPlaceResolved, isPlanReady, unresolvedPlace, type PlaceSelection } from './places/placeSelection';
 import { LocationPicker } from './places/LocationPicker';
 import { TripMap } from './places/TripMap';
 import './App.css';
@@ -21,7 +21,7 @@ const seed: Participant[] = [
     { id: 'jordan', name: 'Jordan', origin: demoPlace('Ferry Building', 37.7955, -122.3937), passengerSeats: 0, canMeet: false },
 ];
 const initialDestination: Place = demoPlace('Golden Gate Park', 37.7694, -122.4862);
-const mapsKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+const mapsKey = enabledGoogleMapsKey(import.meta.env.VITE_GOOGLE_MAPS_ENABLED, import.meta.env.VITE_GOOGLE_MAPS_API_KEY);
 
 function App() {
     const [destination, setDestination] = useState(initialDestination);

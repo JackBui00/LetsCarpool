@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { editPlaceLabel, loadGoogleMaps, type GooglePlace, type PlaceSelection } from './placeSelection';
 
-type Props = { label: string; value: PlaceSelection; apiKey?: string; onEdit: (value: PlaceSelection) => void; onResolved: (value: PlaceSelection) => void };
+type Props = { label: string; value: PlaceSelection; apiKey?: string; disabled?: boolean; onEdit: (value: PlaceSelection) => void; onResolved: (value: PlaceSelection) => void };
 
-export function LocationPicker({ label, value, apiKey, onEdit, onResolved }: Props) {
+export function LocationPicker({ label, value, apiKey, disabled = false, onEdit, onResolved }: Props) {
     const host = useRef<HTMLDivElement>(null);
     const generation = useRef(0);
     const lastWidgetValue = useRef(value.label);
@@ -23,6 +23,7 @@ export function LocationPicker({ label, value, apiKey, onEdit, onResolved }: Pro
                 const widget = new places.PlaceAutocompleteElement({ includedPrimaryTypes: ['geocode', 'establishment'] });
                 widget.setAttribute('aria-label', `Search ${label.toLowerCase()}`);
                 widget.setAttribute('placeholder', `Search an address or ${label.toLowerCase()}`);
+                if (disabled) { widget.setAttribute('aria-disabled', 'true'); widget.setAttribute('disabled', ''); }
                 widget.value = value.label;
                 lastWidgetValue.current = value.label;
                 const invalidate = () => {
@@ -79,14 +80,14 @@ export function LocationPicker({ label, value, apiKey, onEdit, onResolved }: Pro
         return () => { active = false; dispose(); };
     // Initialize the widget once per picker; user edits are owned by the custom element.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [apiKey]);
+    }, [apiKey, disabled]);
 
     const resolved = value.source !== 'unresolved' && value.latitude !== null && value.longitude !== null;
     return <div className="location-picker">
-        <label>{label}<div ref={host} className="places-widget-host" />
-            {!apiKey?.trim() && <input aria-label={label} value={value.label} onChange={event => onEdit(editPlaceLabel(event.target.value))} placeholder="Location search setup required" />}
-            {apiKey?.trim() && !ready && !unavailable && <input aria-label={label} value={value.label} readOnly placeholder="Loading Google location search…" />}
-            {apiKey?.trim() && unavailable && <input aria-label={label} value={value.label} readOnly placeholder="Location search unavailable" />}
+        <label>{label}<div ref={host} className="places-widget-host" data-disabled={disabled} />
+            {!apiKey?.trim() && <input aria-label={label} disabled={disabled} value={value.label} onChange={event => onEdit(editPlaceLabel(event.target.value))} placeholder="Location search setup required" />}
+            {apiKey?.trim() && !ready && !unavailable && <input aria-label={label} disabled={disabled} value={value.label} readOnly placeholder="Loading Google location search…" />}
+            {apiKey?.trim() && unavailable && <input aria-label={label} disabled={disabled} value={value.label} readOnly placeholder="Location search unavailable" />}
         </label>
         <span className={resolved ? 'location-status resolved' : 'location-status'}>{resolved ? value.source === 'demo' ? 'Demo location · replace with a searched place' : 'Selected from Google Places' : 'Choose a search result to set this location'}</span>
         {unavailable && <span className="location-error" role="status">Google location search is unavailable. Check network access and key restrictions.</span>}

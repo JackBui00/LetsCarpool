@@ -32,6 +32,10 @@ export function hasGoogleMapsKey(key: string | undefined) {
     return Boolean(key?.trim());
 }
 
+export function enabledGoogleMapsKey(enabled: string | undefined, key: string | undefined) {
+    return enabled === 'true' && hasGoogleMapsKey(key) ? key : undefined;
+}
+
 export function isPlanReady(key: string | undefined, places: PlaceSelection[]) {
     return hasGoogleMapsKey(key) && places.length > 0 && places.every(isPlaceResolved);
 }
