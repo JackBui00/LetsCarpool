@@ -31,7 +31,7 @@ export type PlanAlternativeDto = {
     }>;
 };
 export type PlannerPlanDto = { alternatives: PlanAlternativeDto[]; searchOperations: number; searchOperationLimit: number };
-export type GeneratedPlanDto = { planId: string; basedOnRevision: number; plan: PlannerPlanDto };
+export type GeneratedPlanDto = PlannerPlanDto & { planId: string; basedOnRevision: number };
 export type AssignmentRole = 'driver' | 'rider';
 export type TripParticipantDraft = {
     name: string;
@@ -98,10 +98,10 @@ export function readAssignmentRole(value: unknown): AssignmentRole | null {
 
 export function readGeneratedPlan(value: unknown): GeneratedPlanDto | null {
     if (!isRecord(value)) return null;
-    const { planId, basedOnRevision, plan } = value;
-    if (typeof planId !== 'string' || !planId || !isRevision(basedOnRevision) || !isRecord(plan)
-        || !Number.isSafeInteger(plan.searchOperations) || !Number.isSafeInteger(plan.searchOperationLimit)
-        || !Array.isArray(plan.alternatives) || !plan.alternatives.every(isPlanAlternative)) return null;
+    const { planId, basedOnRevision, alternatives, searchOperations, searchOperationLimit } = value;
+    if (typeof planId !== 'string' || !planId || !isRevision(basedOnRevision)
+        || !Number.isSafeInteger(searchOperations) || !Number.isSafeInteger(searchOperationLimit)
+        || !Array.isArray(alternatives) || !alternatives.every(isPlanAlternative)) return null;
     return value as GeneratedPlanDto;
 }
 

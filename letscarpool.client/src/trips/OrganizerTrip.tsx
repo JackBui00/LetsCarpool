@@ -189,7 +189,7 @@ export function OrganizerTrip({ tripId, navigate }: Props) {
 }
 
 function PlanOptions({ plan, selectedStrategy, loading, onSelect }: { plan: GeneratedPlan; selectedStrategy: string; loading: boolean; onSelect: (strategy: string) => void }) {
-    const alternatives = plan.plan.alternatives;
+    const alternatives = plan.alternatives;
     return <div className="plan-card"><h3>{selectedStrategy ? `Selected: ${formatStrategy(selectedStrategy)}` : 'Draft plan · not selected'}</h3><p>Based on revision {plan.basedOnRevision}. Exact among supported pickup and rendezvous strategies within the search limit.</p>
         {alternatives.length === 0 ? <p>No feasible assignment is available with the current responses and seats.</p> : alternatives.map(option => <article className="plan-card" key={option.strategy}><h3>{formatStrategy(option.strategy)} · {formatDistance(option.totalDistanceMeters ?? 0)} · {option.durationMinutes ?? 0} estimated min</h3>
             {option.groups?.map((group, index) => <p key={index}><strong>{group.driver?.name ?? 'Driver'} drives</strong> · {(group.riders ?? []).map(rider => rider.name).filter(Boolean).join(', ') || 'driver only'}<br />{(group.stops ?? []).map(stop => `${stop.kind === 'destination' ? 'Destination' : stop.kind === 'rendezvous' ? 'Meetup' : 'Pickup'}: ${stop.label ?? 'stop'}`).join(' → ')}</p>)}

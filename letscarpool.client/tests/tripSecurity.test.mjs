@@ -35,7 +35,7 @@ test('canonical organizer links use /trips and #organizer, and strip the fragmen
     assert.deepEqual(replaced, ['/trips/trip-b']);
 });
 
-test('trip plan response wraps the existing planner DTO and rejects an unwrapped response', () => {
+test('generated and organizer current plans use the direct alternatives response shape', () => {
     const alternative = {
         strategy: 'pickup', totalDistanceMeters: 1200, durationMinutes: 1.8,
         distanceSource: 'haversine-estimate', optimality: 'exact-within-limit', unassigned: [], warnings: [],
@@ -46,9 +46,9 @@ test('trip plan response wraps the existing planner DTO and rejects an unwrapped
             totalDistanceMeters: 1200, durationMinutes: 1.8, driverDetourMinutes: 0,
         }],
     };
-    const generated = { planId: 'plan-1', basedOnRevision: 2, plan: { alternatives: [alternative], searchOperations: 12, searchOperationLimit: 100000 } };
+    const generated = { planId: 'plan-1', basedOnRevision: 2, alternatives: [alternative], searchOperations: 12, searchOperationLimit: 100000 };
     assert.deepEqual(readGeneratedPlan(generated), generated);
-    assert.equal(readGeneratedPlan({ planId: 'plan-1', basedOnRevision: 2, alternatives: [alternative] }), null);
+    assert.equal(readGeneratedPlan({ planId: 'plan-1', basedOnRevision: 2, plan: { alternatives: [alternative], searchOperations: 12, searchOperationLimit: 100000 } }), null);
 });
 
 test('rendezvous plan accepts only the server-provided independent travel estimate', () => {
@@ -68,9 +68,9 @@ test('rendezvous plan accepts only the server-provided independent travel estima
         strategy: 'rendezvous', totalDistanceMeters: 2950, durationMinutes: 4.4,
         distanceSource: 'haversine-estimate', optimality: 'exact-within-limit', unassigned: [], warnings: [], groups: [group],
     };
-    const response = { planId: 'plan-2', basedOnRevision: 3, plan: { alternatives: [alternative], searchOperations: 25, searchOperationLimit: 100000 } };
+    const response = { planId: 'plan-2', basedOnRevision: 3, alternatives: [alternative], searchOperations: 25, searchOperationLimit: 100000 };
     assert.deepEqual(readGeneratedPlan(response), response);
-    assert.equal(readGeneratedPlan({ ...response, plan: { ...response.plan, alternatives: [{ ...alternative, groups: [{ ...group, independentTravelLegs: [{ ...leg, modeAssumption: 'walking' }] }] }] } }), null);
+    assert.equal(readGeneratedPlan({ ...response, alternatives: [{ ...alternative, groups: [{ ...group, independentTravelLegs: [{ ...leg, modeAssumption: 'walking' }] }] }] }), null);
 });
 
 test('final participant assignment DTO renders only the caller independent leg', () => {
@@ -87,7 +87,7 @@ test('final participant assignment DTO renders only the caller independent leg',
 });
 
 test('server planStale prevents selection even when revision metadata matches', () => {
-    const generated = { planId: 'plan-1', basedOnRevision: 4, plan: { alternatives: [], searchOperations: 1, searchOperationLimit: 100000 } };
+    const generated = { planId: 'plan-1', basedOnRevision: 4, alternatives: [], searchOperations: 1, searchOperationLimit: 100000 };
     assert.equal(isPlanStale(true, false, 4, generated), true);
     assert.equal(isPlanStale(false, false, 5, generated), true);
     assert.equal(isPlanStale(false, true, 4, generated), true);
