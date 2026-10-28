@@ -27,6 +27,10 @@ If the integrated SQL trip store is selected, set the app configuration `Carpool
 
 Schema setup is a separate, operator-reviewed activity. Review and run the versioned SQL scripts only through the approved migration process, against the independently verified intended database. The app startup and deployment workflow do not create or migrate schema, import JSON data, seed trips, or grant permissions. Keep migration credentials separate from the runtime identity. Preserve schema version 2 and the trip API's location provenance contract during upgrades.
 
+## SQL CI verification status
+
+The current local environment could not run SQL acceptance checks: its Docker engine is unavailable and SQL Server LocalDB is not working. This is a local verification blocker, not a passing SQL result. CI must run the required integration entrypoint against a unique disposable SQL Server container database and fail if the connection is missing or the test reports a skip. The App Service artifact is published only after that SQL check passes. Until a hosted run demonstrates the complete workflow, describe it as configured and locally workflow-validated; do not claim hosted build, SQL integration, or deployment success.
+
 ## Mapbox configuration
 
 `VITE_MAPBOX_ACCESS_TOKEN` is a **public browser token** injected at client build time. It is visible to every browser and must never be treated as a secret or used as a server credential. Supply it as a GitHub Actions variable if a map-enabled build is desired; restrict allowed referrers to the production HTTPS origin and the minimum map scopes. A missing token disables the map, so decide and verify the intended UI behavior before deployment. Never put SQL credentials, managed-identity tokens, or other server secrets in any `VITE_*` variable. Server-side configuration belongs in App Service settings or Key Vault references, and SQL auth uses managed identity rather than a stored password.
