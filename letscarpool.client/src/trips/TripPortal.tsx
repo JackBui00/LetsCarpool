@@ -32,7 +32,7 @@ export function TripPortal() {
         <Header onHome={() => navigate('/')} />
         {initialCapability?.storageError && <Notice kind="error">This browser could not safely keep the invitation capability for this tab. Reopen the private link after enabling session storage.</Notice>}
         {parts[0] === 'join' && tripId ? <JoinTrip key={`join-${tripId}`} tripId={tripId} navigate={navigate} />
-            : parts[0] === 'manage' && tripId ? <OrganizerTrip key={`manage-${tripId}`} tripId={tripId} navigate={navigate} />
+            : (parts[0] === 'trips' || parts[0] === 'manage') && tripId ? <OrganizerTrip key={`manage-${tripId}`} tripId={tripId} navigate={navigate} />
                 : parts[0] === 'trip' && tripId ? <ParticipantTrip key={`trip-${tripId}`} tripId={tripId} navigate={navigate} />
                     : <CreateTrip navigate={navigate} />}
         <footer className="trip-footer"><span>Made for the ride together.</span><span>Location data is shared only for trip coordination.</span></footer>
@@ -74,7 +74,7 @@ function CreateTrip({ navigate }: { navigate: (path: string) => void }) {
                 throw new Error('This browser could not keep the private trip links. Enable session storage and create the trip again.');
             }
             return created;
-        }, created => navigate(`/manage/${encodeURIComponent(created.tripId)}`));
+        }, created => navigate(`/trips/${encodeURIComponent(created.tripId)}`));
     }
 
     return <>

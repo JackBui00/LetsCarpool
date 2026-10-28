@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { capabilityStorageKey, getCapability, readCapabilityFragment } from '../src/trips/capabilitySession.ts';
 import { tripApi } from '../src/trips/tripApi.ts';
-import { selectedLocation } from '../src/trips/tripTypes.ts';
+import { readGeneratedPlan, selectedLocation } from '../src/trips/tripTypes.ts';
 import { demoPlace } from '../src/places/placeSelection.ts';
 
 function memoryStorage() {
@@ -21,6 +21,28 @@ test('invite and organizer fragments are removed and stored under separate sessi
     assert.equal(getCapability('invite', 'trip-a', storage), 'invite-secret');
     assert.equal(getCapability('organizer', 'trip-a', storage), 'owner-secret');
     assert.notEqual(capabilityStorageKey('invite', 'trip-a'), capabilityStorageKey('organizer', 'trip-a'));
+});
+
+test('canonical organizer links use /trips and #organizer, and strip the fragment', () => {
+    const storage = memoryStorage();
+    const replaced = [];
+    const result = readCapabilityFragment('/trips/trip-b', '', '#organizer=owner-secret', storage, url => replaced.push(url));
+    assert.deepEqual(result, { role: 'organizer', tripId: 'trip-b' });
+    assert.equal(getCapability('organizer', 'trip-b', storage), 'owner-secret');
+    assert.deepEqual(replaced, ['/trips/trip-b']);
+});
+
+test('trip plan response uses top-level alternatives and rejects nested planner wrappers', () => {
+    const alternative = {
+        strategy: 'pickup', totalDistanceMeters: 1200, durationMinutes: 1.8,
+        unassigned: [], warnings: [],
+        groups: [{
+            driver: { id: 'd1', name: 'Driver' }, riders: [{ id: 'r1', name: 'Rider' }],
+            stops: [{ participantId: 'r1', label: 'Home', latitude: 37.7, longitude: -122.4, kind: 'pickup' }, { participantId: null, label: 'Venue', latitude: 37.8, longitude: -122.3, kind: 'destination' }],
+        }],
+    };
+    assert.deepEqual(readGeneratedPlan({ planId: 'plan-1', basedOnRevision: 2, alternatives: [alternative] }), { planId: 'plan-1', basedOnRevision: 2, alternatives: [alternative] });
+    assert.equal(readGeneratedPlan({ planId: 'plan-1', basedOnRevision: 2, plan: { alternatives: [alternative] } }), null);
 });
 
 test('role API calls use bearer header and keep capability out of request URL', async () => {

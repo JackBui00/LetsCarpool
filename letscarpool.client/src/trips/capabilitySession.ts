@@ -9,14 +9,13 @@ export function readCapabilityFragment(
     storage: CapabilityStorage,
     replaceUrl: (url: string) => void,
 ) {
-    const match = pathname.match(/^\/(?:join|manage|trip)\/([^/]+)\/?$/);
+    const match = pathname.match(/^\/(join|trips|manage|trip)\/([^/]+)\/?$/);
     if (!match || !hash) return null;
-    const tripId = decodeURIComponent(match[1]);
+    const route = match[1];
+    const tripId = decodeURIComponent(match[2]);
     const fragment = new URLSearchParams(hash.startsWith('#') ? hash.slice(1) : hash);
-    const invite = fragment.get('invite');
-    const owner = fragment.get('owner');
-    const role: CapabilityRole | null = invite ? 'invite' : owner ? 'organizer' : null;
-    const token = invite ?? owner;
+    const role: CapabilityRole | null = route === 'join' ? 'invite' : route === 'trips' || route === 'manage' ? 'organizer' : null;
+    const token = role === 'invite' ? fragment.get('invite') : role === 'organizer' ? fragment.get('organizer') ?? fragment.get('owner') : null;
     if (!role || !token) return null;
     try {
         storage.setItem(capabilityStorageKey(role, tripId), token);

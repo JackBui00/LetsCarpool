@@ -4,7 +4,7 @@ import { LocationPicker } from '../places/LocationPicker';
 import { TripMap } from '../places/TripMap';
 import { clearCapability, getCapability, setCapability } from './capabilitySession';
 import { tripApi } from './tripApi';
-import { readRevision, readTripSummary, selectedLocation, type TripSummary } from './tripTypes';
+import { readGeneratedPlan, readRevision, readTripSummary, selectedLocation, type GeneratedPlanDto, type TripSummary } from './tripTypes';
 import { useGuardedRequest } from './useGuardedRequest';
 import { isValidLocalTimeInZone, isValidTimeZone, isoWithZoneOffset, localInputInZone } from './dateTime';
 import { Notice, SectionTitle } from './TripUi';
@@ -12,8 +12,7 @@ import { Notice, SectionTitle } from './TripUi';
 const mapsKey = enabledGoogleMapsKey(import.meta.env.VITE_GOOGLE_MAPS_ENABLED, import.meta.env.VITE_GOOGLE_MAPS_API_KEY);
 type Props = { tripId: string; navigate: (path: string) => void };
 type Person = { participantId?: string; id?: string; name?: string; origin?: { label?: string; latitude?: number; longitude?: number }; canDrive?: boolean; passengerSeats?: number; canMeet?: boolean; status?: string };
-type Alternative = { strategy: string; totalDistanceMeters?: number; durationMinutes?: number; unassigned?: Array<{ participantId: string; reason: string }>; warnings?: string[]; groups?: Array<{ driver?: { name?: string }; riders?: Array<{ name?: string }>; stops?: Array<{ participantId?: string | null; label?: string; kind?: string }> }> };
-type GeneratedPlan = { planId: string; basedOnRevision: number; plan: { alternatives?: Alternative[]; optimality?: string; distanceSource?: string; searchOperations?: number; searchOperationLimit?: number } };
+type GeneratedPlan = GeneratedPlanDto;
 type Overview = { trip: TripSummary; revision: number; participants: Person[]; currentPlan?: GeneratedPlan; selectedStrategy?: string; inviteCapability?: string; organizerCapabilityExpiresAt?: string };
 
 export function OrganizerTrip({ tripId, navigate }: Props) {
@@ -71,7 +70,7 @@ export function OrganizerTrip({ tripId, navigate }: Props) {
         if (!overview || dirty) return;
         void request.run(async () => {
             const value = await tripApi<unknown>(`/${encodeURIComponent(tripId)}/plans`, token, { method: 'POST', body: JSON.stringify({ expectedRevision: overview.revision }) });
-            const parsed = normalizeGeneratedPlan(value);
+            const parsed = readGeneratedPlan(value);
             if (!parsed || parsed.basedOnRevision !== overview.revision) throw new Error('The trip service returned an incomplete or stale plan response.');
             return parsed;
         }, value => {
@@ -95,7 +94,7 @@ export function OrganizerTrip({ tripId, navigate }: Props) {
         if (!capability) { setMessage(kind === 'invite' ? 'The invitation has been revoked. Rotate it before sharing.' : 'No organizer capability is available in this tab.'); return; }
         const link = kind === 'invite'
             ? `${window.location.origin}/join/${encodeURIComponent(tripId)}#invite=${encodeURIComponent(capability)}`
-            : `${window.location.origin}/manage/${encodeURIComponent(tripId)}#owner=${encodeURIComponent(capability)}`;
+            : `${window.location.origin}/trips/${encodeURIComponent(tripId)}#organizer=${encodeURIComponent(capability)}`;
         try { await navigator.clipboard.writeText(link); setMessage(kind === 'invite' ? 'Guest invitation copied. Share it privately.' : 'Organizer management link copied. Keep it private and separate from the guest invite.'); }
         catch { setMessage('Clipboard access was unavailable. This link was not copied.'); }
     }
@@ -180,7 +179,7 @@ export function OrganizerTrip({ tripId, navigate }: Props) {
 }
 
 function PlanOptions({ plan, selectedStrategy, loading, onSelect }: { plan: GeneratedPlan; selectedStrategy: string; loading: boolean; onSelect: (strategy: string) => void }) {
-    const alternatives = plan.plan.alternatives ?? [];
+    const alternatives = plan.alternatives;
     return <div className="plan-card"><h3>{selectedStrategy ? `Selected: ${formatStrategy(selectedStrategy)}` : 'Draft plan · not selected'}</h3><p>Based on revision {plan.basedOnRevision}. Exact among supported pickup and rendezvous strategies within the search limit.</p>
         {alternatives.length === 0 ? <p>No feasible assignment is available with the current responses and seats.</p> : alternatives.map(option => <article className="plan-card" key={option.strategy}><h3>{formatStrategy(option.strategy)} · {formatDistance(option.totalDistanceMeters ?? 0)} · {option.durationMinutes ?? 0} estimated min</h3>
             {option.groups?.map((group, index) => <p key={index}><strong>{group.driver?.name ?? 'Driver'} drives</strong> · {(group.riders ?? []).map(rider => rider.name).filter(Boolean).join(', ') || 'driver only'}<br />{(group.stops ?? []).map(stop => `${stop.kind === 'destination' ? 'Destination' : stop.kind === 'rendezvous' ? 'Meetup' : 'Pickup'}: ${stop.label ?? 'stop'}`).join(' → ')}</p>)}
@@ -201,7 +200,7 @@ function normalizeOverview(value: unknown, tripId: string): Overview | null {
     if (!Array.isArray(rawParticipants)) return null;
     const participants = rawParticipants as Person[];
     const rawPlan = source.currentPlan ?? source.draftPlan ?? source.selectedPlan;
-    const currentPlan = rawPlan && typeof rawPlan === 'object' ? normalizeGeneratedPlan(rawPlan) ?? undefined : undefined;
+    const currentPlan = rawPlan && typeof rawPlan === 'object' ? readGeneratedPlan(rawPlan) ?? undefined : undefined;
     return {
         trip: { ...trip, tripId: trip.tripId || tripId }, revision, participants,
         currentPlan, selectedStrategy: typeof source.selectedStrategy === 'string' ? source.selectedStrategy : undefined,
@@ -210,13 +209,6 @@ function normalizeOverview(value: unknown, tripId: string): Overview | null {
     };
 }
 
-function normalizeGeneratedPlan(value: unknown): GeneratedPlan | null {
-    if (!value || typeof value !== 'object') return null;
-    const item = value as Record<string, unknown>;
-    const plan = item.plan as Record<string, unknown> | undefined;
-    if (typeof item.planId !== 'string' || !item.planId || typeof item.basedOnRevision !== 'number' || !Number.isSafeInteger(item.basedOnRevision) || !plan || !Array.isArray(plan.alternatives)) return null;
-    return item as unknown as GeneratedPlan;
-}
 function isRotatedInvite(value: unknown): value is { inviteCapability: string; inviteExpiresAt: string } {
     if (!value || typeof value !== 'object') return false;
     const item = value as Record<string, unknown>;
