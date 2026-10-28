@@ -43,16 +43,43 @@ static void PickupOrder()
     Equal("far", group.Stops[1].ParticipantId);
     Equal("pickup", group.Stops[0].Kind);
     Equal("destination", group.Stops[^1].Kind);
+    Equal(0, group.IndependentTravelLegs.Count);
     True(result.SearchOperations <= result.SearchOperationLimit);
 }
 
 static void RendezvousCostAndConsent()
 {
-    var result = Plan(
-        [Person("driver", 0, 0, 2), Person("rider-a", 0, .05, canMeet: true), Person("rider-b", .02, .1, canMeet: true)],
-        Location(0, .2));
+    var participants = new[]
+    {
+        Person("driver", 0, 0, 2),
+        Person("rider-a", 0, .05, canMeet: true),
+        Person("rider-b", .02, .1, canMeet: true)
+    };
+    var destination = Location(0, .2);
+    var result = Plan(participants, destination);
     var group = result.Alternatives.Single(item => item.Strategy == "rendezvous").Groups.Single();
     True(group.IndependentTravelDistanceMeters > 0);
+    Equal(group.Riders.Count, group.IndependentTravelLegs.Count);
+    True(group.Riders.Select(rider => rider.Id).OrderBy(id => id, StringComparer.Ordinal)
+        .SequenceEqual(group.IndependentTravelLegs.Select(leg => leg.ParticipantId).OrderBy(id => id, StringComparer.Ordinal)));
+    True(group.IndependentTravelLegs.All(leg => leg.From.Kind == "origin" && leg.To.Kind == "rendezvous"));
+    var meeting = group.Stops[0];
+    var participantsById = participants.ToDictionary(person => person.Id, StringComparer.Ordinal);
+    foreach (var leg in group.IndependentTravelLegs)
+    {
+        var rider = participantsById[leg.ParticipantId];
+        Equal(leg.ParticipantId, leg.From.ParticipantId);
+        Equal(rider.Origin.Label, leg.From.Label);
+        Near(rider.Origin.Latitude, leg.From.Latitude);
+        Near(rider.Origin.Longitude, leg.From.Longitude);
+        Equal(meeting.ParticipantId, leg.To.ParticipantId);
+        Equal(meeting.Label, leg.To.Label);
+        Near(meeting.Latitude, leg.To.Latitude);
+        Near(meeting.Longitude, leg.To.Longitude);
+    }
+    Near(group.IndependentTravelLegs.Sum(leg => leg.DistanceMeters), group.IndependentTravelDistanceMeters);
+    var directDuration = new HaversineDistanceProvider().Estimate(participantsById["driver"].Origin, destination).DurationMinutes;
+    Near(directDuration + group.DriverDetourMinutes + group.IndependentTravelLegs.Sum(leg => leg.DurationMinutes), group.DurationMinutes);
     Near(group.VehicleDistanceMeters + group.IndependentTravelDistanceMeters, group.TotalDistanceMeters);
     Equal(2, group.Riders.Count);
     Equal("destination", group.Stops[^1].Kind);
