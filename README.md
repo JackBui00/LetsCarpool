@@ -45,8 +45,8 @@ Private-trip records are stored in `LetsCarpool.Server/App_Data/trips.json` by d
 
 ## Prerequisites
 
-- .NET 8 SDK and the .NET 8 targeting pack, with NuGet restore available.
-- Node.js 22 and npm for the client and its current test command. The repository does not pin a specific Node patch release.
+- .NET 10 SDK and the .NET 10 targeting pack, with NuGet restore available. `global.json` selects stable SDK `10.0.403` and rolls forward within the .NET 10 feature band.
+- Node.js 22 and npm for client checks and Release publish. The repository does not pin a specific Node patch release.
 - A Mapbox public browser token for rendering the map and selecting a pin. Mapbox usage is metered; a free allowance is not a spending cap. The app does not change account, billing, or quota settings.
 
 ### Local Mapbox configuration
@@ -145,4 +145,14 @@ The server checks are a focused executable project rather than an xUnit/NUnit te
 dotnet run --project .\LetsCarpool.Server.Tests\LetsCarpool.Server.Tests.csproj
 ```
 
-These commands require restored dependencies and the .NET 8 SDK/targeting pack. The full application has not been verified running under .NET 8 in the environment used to prepare this README because the target packs and NuGet restore were unavailable. Source-linked smoke checks run under .NET 10 are not a substitute for running the application under its .NET 8 target. No production deployment configuration is supplied. Do not treat the local JSON store or Vite development server as a multi-user hosted deployment.
+To use the EF Core command-line tool from its local manifest:
+
+```powershell
+Set-Location .\LetsCarpool.Server
+dotnet tool restore
+dotnet ef --version
+```
+
+The server targets .NET 10 LTS (supported through November 14, 2028); [.NET 8 support ends November 10, 2026](https://dotnet.microsoft.com/en-us/platform/support/policy/dotnet-core). The server and focused checks require restored dependencies and the .NET 10 targeting pack. No production deployment configuration is supplied. The Dockerfile builds the React client and packages it with the ASP.NET Core app; the local JSON store and Vite development server are not a multi-instance hosted storage solution.
+
+`dotnet publish .\LetsCarpool.Server\LetsCarpool.Server.csproj -c Release` builds the client with Node.js and includes its files under `wwwroot` in the publish directory. This is suitable for a future Azure App Service Code deployment after deployment settings and durable shared storage are designed; no Azure resource or deployment is configured by this repository. The Dockerfile is an optional container path. Azure App Service Code supports both Windows and Linux; Linux is the preferred future option, not a runtime requirement.
