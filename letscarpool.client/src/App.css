@@ -37,6 +37,7 @@ input:focus { border-color: #679a79 !important; outline-color: #e7a776; }
 .check-control { flex-direction: row; align-items: center; gap: 7px; margin-left: auto; color: #526c5e; font-size: 11px; cursor: pointer; }
 .check-control input { accent-color: #397453; width: 15px; height: 15px; margin: 0; }
 .add-button { margin-top: 14px; padding: 8px 3px; border: 0; background: none; color: #36734f; font-size: 12px; font-weight: 700; }
+.add-button:disabled { color: #99a59c; cursor: not-allowed; }
 .add-button span { display: inline-grid; width: 20px; height: 20px; margin-right: 5px; place-items: center; border: 1px solid #b9d2c0; border-radius: 50%; font-size: 16px; vertical-align: middle; }
 .detour-control { max-width: 470px; gap: 9px; color: #65756b; font-size: 12px; }
 .range-value { margin-left: auto; color: #36734f; font: 700 13px Manrope, sans-serif; }
@@ -65,10 +66,16 @@ input[type=range] { width: 100%; accent-color: #397453; }
 .group-block { padding: 14px 0 4px; }
 .group-block h4, .unassigned h4 { display: flex; align-items: center; gap: 8px; margin: 0 0 9px; color: #30483c; font: 600 13px Manrope, sans-serif; }
 .group-block h4 small { color: #909a93; font: 400 10px 'DM Sans', sans-serif; }
+.group-riders { margin: 0 0 9px 32px; color: #738078; font-size: 11px; }
+.group-riders strong { color: #52665a; }
+.group-distance { display: flex; flex-wrap: wrap; gap: 7px 16px; margin: 0 0 10px 32px; color: #89958d; font-size: 10px; }
+.group-distance span { display: flex; gap: 4px; align-items: baseline; }
+.group-distance strong { color: #477057; font-size: 11px; }
 .car-icon { display: grid; width: 24px; height: 24px; place-items: center; border-radius: 7px; color: #397453; background: #edf4ee; }
 .stop-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: 7px; margin: 0; padding: 0; list-style: none; }
 .stop-list li { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-height: 30px; color: #51655a; font-size: 11px; }
 .stop-dot { width: 7px; height: 7px; flex: 0 0 7px; border-radius: 50%; background: #83a789; }
+.stop-person { color: #344e40; font-weight: 700; }
 .stop-kind { padding: 3px 5px; border-radius: 4px; color: #8c724e; background: #f7f1e7; font-size: 9px; }
 .stop-location { flex-basis: 100%; padding-left: 13px; color: #9ca59e; font-size: 10px; }
 .unassigned { margin-top: 13px; padding: 12px; border-radius: 7px; background: #faf5ed; color: #83725c; }
