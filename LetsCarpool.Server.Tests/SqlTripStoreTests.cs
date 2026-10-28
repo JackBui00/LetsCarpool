@@ -7,6 +7,7 @@ internal static class SqlTripStoreTests
 {
     private const string RunIntegrationVariable = "LETS_CARPOOL_RUN_SQL_INTEGRATION";
     private const string TestConnectionVariable = "LETS_CARPOOL_TEST_SQL_CONNECTION";
+    private const int MinimumSqlIntegrationAssertions = 33;
     private static int assertionCount;
 
     public static void ProviderSelectionAndConfiguration()
@@ -75,8 +76,8 @@ internal static class SqlTripStoreTests
         {
             assertionCount = 0;
             RunLocalIntegration(connectionString);
-            if (assertionCount == 0)
-                throw new InvalidOperationException("The SQL integration scenario completed without assertions.");
+            if (assertionCount < MinimumSqlIntegrationAssertions)
+                throw new InvalidOperationException("The SQL integration scenario completed with fewer assertions than required.");
             return (true, assertionCount);
         }
         catch (Exception exception)
@@ -225,13 +226,16 @@ internal static class SqlTripStoreTests
             var lifecycleTrip = lifecycleService.CreateAsync(CreateRequest(prefix + " capability lifecycle"), CancellationToken.None).GetAwaiter().GetResult();
             createdTripIds.Add(lifecycleTrip.TripId);
             var firstRotation = lifecycleService.RotateInviteAsync(lifecycleTrip.TripId, lifecycleTrip.OrganizerCapability, CancellationToken.None).GetAwaiter().GetResult();
+            True(firstRotation.InviteExpiresAt > lifecycleTime.GetUtcNow());
             Equal(404, ThrowsTripApiException(() => lifecycleService.GetInviteAsync(lifecycleTrip.TripId, lifecycleTrip.InviteCapability, CancellationToken.None).GetAwaiter().GetResult()).Status);
             True(lifecycleService.GetInviteAsync(lifecycleTrip.TripId, firstRotation.InviteCapability, CancellationToken.None).GetAwaiter().GetResult() is not null);
             lifecycleService.RevokeInviteAsync(lifecycleTrip.TripId, lifecycleTrip.OrganizerCapability, CancellationToken.None).GetAwaiter().GetResult();
             Equal(404, ThrowsTripApiException(() => lifecycleService.GetInviteAsync(lifecycleTrip.TripId, firstRotation.InviteCapability, CancellationToken.None).GetAwaiter().GetResult()).Status);
+            True(lifecycleService.GetOrganizerAsync(lifecycleTrip.TripId, lifecycleTrip.OrganizerCapability, CancellationToken.None).GetAwaiter().GetResult() is not null);
             var expiringInvite = lifecycleService.RotateInviteAsync(lifecycleTrip.TripId, lifecycleTrip.OrganizerCapability, CancellationToken.None).GetAwaiter().GetResult();
             var lifecycleParticipant = lifecycleService.JoinAsync(lifecycleTrip.TripId, expiringInvite.InviteCapability, Guid.NewGuid().ToString(), JoinRequest("expiring participant"), CancellationToken.None).GetAwaiter().GetResult();
             var organizerRotation = lifecycleService.RotateOrganizerAsync(lifecycleTrip.TripId, lifecycleTrip.OrganizerCapability, CancellationToken.None).GetAwaiter().GetResult();
+            True(organizerRotation.OrganizerExpiresAt > lifecycleTime.GetUtcNow());
             Equal(404, ThrowsTripApiException(() => lifecycleService.GetOrganizerAsync(lifecycleTrip.TripId, lifecycleTrip.OrganizerCapability, CancellationToken.None).GetAwaiter().GetResult()).Status);
             True(lifecycleService.GetOrganizerAsync(lifecycleTrip.TripId, organizerRotation.OrganizerCapability, CancellationToken.None).GetAwaiter().GetResult() is not null);
             lifecycleTime.Advance(TimeSpan.FromDays(91));
