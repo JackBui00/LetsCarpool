@@ -11,7 +11,9 @@ import { Notice, SectionTitle } from './TripUi';
 const mapsKey = enabledGoogleMapsKey(import.meta.env.VITE_GOOGLE_MAPS_ENABLED, import.meta.env.VITE_GOOGLE_MAPS_API_KEY);
 type Props = { tripId: string; navigate: (path: string) => void };
 type Profile = { name: string; origin: PlaceSelection; canDrive: boolean; passengerSeats: number; canMeet: boolean; maxDetourMinutes: number; locationDisclosureAccepted: boolean };
-type OwnAssignment = { strategy?: string; group?: { driver?: { name?: string }; riders?: Array<{ name?: string }>; stops?: Array<{ kind?: string; label?: string }> }; driver?: { name?: string }; riders?: Array<{ name?: string }>; stops?: Array<{ kind?: string; label?: string }>; totalDistanceMeters?: number; durationMinutes?: number };
+type OwnTravelLeg = { participantId: string; from: { label: string; kind: 'origin' }; to: { label: string; kind: 'rendezvous' }; distanceMeters: number; durationMinutes: number; modeAssumption: 'unspecified' };
+type OwnAssignmentGroup = { driver?: { name?: string }; riders?: Array<{ name?: string }>; stops?: Array<{ kind?: string; label?: string }>; independentTravelLegs?: OwnTravelLeg[]; totalDistanceMeters?: number; durationMinutes?: number };
+type OwnAssignment = { strategy?: string; group?: OwnAssignmentGroup; independentTravelLegs?: OwnTravelLeg[]; driver?: { name?: string }; riders?: Array<{ name?: string }>; stops?: Array<{ kind?: string; label?: string }>; totalDistanceMeters?: number; durationMinutes?: number };
 type SelfView = { revision: number; trip: TripSummary; profile: Profile; assignment?: OwnAssignment | null };
 
 export function ParticipantTrip({ tripId, navigate }: Props) {
@@ -69,6 +71,7 @@ export function ParticipantTrip({ tripId, navigate }: Props) {
     const assignment = saved.assignment;
     const group = assignment?.group;
     const stops = group?.stops ?? assignment?.stops ?? [];
+    const independentTravelLegs = group?.independentTravelLegs ?? assignment?.independentTravelLegs ?? [];
     const driver = group?.driver ?? assignment?.driver;
     const riders = group?.riders ?? assignment?.riders ?? [];
     const mapPlaces = [
@@ -95,19 +98,20 @@ export function ParticipantTrip({ tripId, navigate }: Props) {
             </form>
             <section className="trip-panel"><SectionTitle number="02" title="Your saved assignment" note="Only your own assigned group and necessary stops appear here." />
                 {dirty ? <Notice>Your entry has unsaved edits. The assignment below still reflects your last saved response.</Notice> : null}
-                {!assignment ? <p className="status-note">The organizer has not selected a current plan yet.</p> : <OwnAssignmentCard assignment={assignment} driver={driver} riders={riders} stops={stops} />}
+                {!assignment ? <p className="status-note">The organizer has not selected a current plan yet.</p> : <OwnAssignmentCard assignment={assignment} driver={driver} riders={riders} stops={stops} independentTravelLegs={independentTravelLegs} totalDistanceMeters={assignment.totalDistanceMeters ?? group?.totalDistanceMeters} durationMinutes={assignment.durationMinutes ?? group?.durationMinutes} />}
                 <p className="status-note">Distances are estimates, not road routing. Arrival time is coordination information and is not guaranteed.</p>
             </section>
         </div><TripMap apiKey={mapsKey} locations={mapPlaces} /></div>
     </>;
 }
 
-function OwnAssignmentCard({ assignment, driver, riders, stops }: { assignment: OwnAssignment; driver?: { name?: string }; riders: Array<{ name?: string }>; stops: Array<{ kind?: string; label?: string }> }) {
+function OwnAssignmentCard({ assignment, driver, riders, stops, independentTravelLegs, totalDistanceMeters, durationMinutes }: { assignment: OwnAssignment; driver?: { name?: string }; riders: Array<{ name?: string }>; stops: Array<{ kind?: string; label?: string }>; independentTravelLegs: OwnTravelLeg[]; totalDistanceMeters?: number; durationMinutes?: number }) {
     return <div className="assignment-card"><h2>{assignment.strategy === 'rendezvous' ? 'Meet along the way' : assignment.strategy === 'pickup' ? 'Pick up along the way' : 'Your carpool assignment'}</h2>
         <p><strong>Driver:</strong> {driver?.name ?? 'See your group details'}</p>
         <p><strong>Assigned companions:</strong> {riders.map(person => person.name).filter(Boolean).join(', ') || 'See your group details'}</p>
-        {assignment.totalDistanceMeters !== undefined && <p>Estimated group travel {formatDistance(assignment.totalDistanceMeters)} · {assignment.durationMinutes ?? '—'} estimated minutes.</p>}
+        {totalDistanceMeters !== undefined && <p>Estimated group travel {formatDistance(totalDistanceMeters)} · {durationMinutes ?? '—'} estimated minutes.</p>}
         {stops.length > 0 && <ol className="assignment-stops">{stops.map((stop, index) => <li key={`${stop.kind}-${index}`}>{stop.kind === 'destination' ? 'Shared destination' : stop.kind === 'rendezvous' ? 'Meetup point' : 'Pickup'} · {stop.label ?? 'location details'}</li>)}</ol>}
+        {independentTravelLegs.map(leg => <p className="assignment-travel-leg" key={leg.participantId}><strong>Your independent travel estimate:</strong> {leg.from.label} to {leg.to.label} · {formatDistance(leg.distanceMeters)} · {leg.durationMinutes} estimated minutes. Travel mode is unspecified; this uses a straight-line estimate.</p>)}
     </div>;
 }
 

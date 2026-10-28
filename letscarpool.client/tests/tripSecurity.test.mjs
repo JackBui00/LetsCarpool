@@ -48,6 +48,28 @@ test('trip plan response wraps the existing planner DTO and rejects an unwrapped
     assert.equal(readGeneratedPlan({ planId: 'plan-1', basedOnRevision: 2, alternatives: [alternative] }), null);
 });
 
+test('rendezvous plan accepts only the server-provided independent travel estimate', () => {
+    const leg = {
+        participantId: 'r1',
+        from: { participantId: 'r1', label: 'Rider origin', latitude: 37.71, longitude: -122.42, kind: 'origin' },
+        to: { participantId: 'd1', label: 'Meetup', latitude: 37.7, longitude: -122.4, kind: 'rendezvous' },
+        distanceMeters: 1750, durationMinutes: 2.6, modeAssumption: 'unspecified',
+    };
+    const group = {
+        driver: { id: 'd1', name: 'Driver' }, riders: [{ id: 'r1', name: 'Rider' }],
+        stops: [{ participantId: 'd1', label: 'Meetup', latitude: 37.7, longitude: -122.4, kind: 'rendezvous' }, { participantId: null, label: 'Venue', latitude: 37.8, longitude: -122.3, kind: 'destination' }],
+        independentTravelLegs: [leg], vehicleDistanceMeters: 1200, independentTravelDistanceMeters: 1750,
+        totalDistanceMeters: 2950, durationMinutes: 4.4, driverDetourMinutes: 0,
+    };
+    const alternative = {
+        strategy: 'rendezvous', totalDistanceMeters: 2950, durationMinutes: 4.4,
+        distanceSource: 'haversine-estimate', optimality: 'exact-within-limit', unassigned: [], warnings: [], groups: [group],
+    };
+    const response = { planId: 'plan-2', basedOnRevision: 3, plan: { alternatives: [alternative], searchOperations: 25, searchOperationLimit: 100000 } };
+    assert.deepEqual(readGeneratedPlan(response), response);
+    assert.equal(readGeneratedPlan({ ...response, plan: { ...response.plan, alternatives: [{ ...alternative, groups: [{ ...group, independentTravelLegs: [{ ...leg, modeAssumption: 'walking' }] }] }] } }), null);
+});
+
 test('role API calls use bearer header and keep capability out of request URL', async () => {
     let called;
     await tripApi('/trip-a/participants', 'private-token', {
