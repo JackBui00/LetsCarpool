@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using LetsCarpool.Server.Carpooling;
 using LetsCarpool.Server.Trips;
 using Microsoft.Data.SqlClient;
@@ -6,7 +5,9 @@ using Microsoft.Extensions.Configuration;
 
 internal static class SqlTripStoreTests
 {
+    private const string RunIntegrationVariable = "LETS_CARPOOL_RUN_SQL_INTEGRATION";
     private const string TestConnectionVariable = "LETS_CARPOOL_TEST_SQL_CONNECTION";
+    private static int assertionCount;
 
     public static void ProviderSelectionAndConfiguration()
     {
@@ -29,17 +30,33 @@ internal static class SqlTripStoreTests
             ["ConnectionStrings:DefaultConnection"] = "Server=localhost;Initial Catalog=LetsCarpoolTest_0123456789abcdef0123456789abcdef;Encrypt=True;TrustServerCertificate=False;User ID=test;Password=placeholder"
         }).Build();
         ThrowsInvalidOperation(() => SqlTripStore.ValidateConfiguration(password));
+
+        var testContainer = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:DefaultConnection"] = "Server=localhost,1433;Initial Catalog=LetsCarpoolTest_0123456789abcdef0123456789abcdef;Encrypt=True;TrustServerCertificate=True;User ID=test;Password=test-only-placeholder"
+        }).Build();
+        ThrowsInvalidOperation(() => SqlTripStore.ValidateConfiguration(testContainer));
+        var nonLocalTestTarget = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:DefaultConnection"] = "Server=remote.example,1433;Initial Catalog=LetsCarpoolTest_0123456789abcdef0123456789abcdef;Encrypt=True;TrustServerCertificate=True;User ID=test;Password=test-only-placeholder"
+        }).Build();
+        ThrowsInvalidOperation(() => SqlTripStore.ValidateConfiguration(nonLocalTestTarget, allowTestOnlyLocalSqlAuthentication: true));
     }
 
-    public static bool RunLocalIntegrationIfConfigured()
+    public static (bool Executed, int Assertions) RunLocalIntegrationFromEnvironment()
     {
+        var optedIn = string.Equals(Environment.GetEnvironmentVariable(RunIntegrationVariable), "true", StringComparison.OrdinalIgnoreCase);
         var connectionString = Environment.GetEnvironmentVariable(TestConnectionVariable);
-        if (string.IsNullOrWhiteSpace(connectionString)) return false;
+        if (!optedIn)
+            return (false, 0);
+        if (string.IsNullOrWhiteSpace(connectionString))
+            throw new InvalidOperationException("SQL integration opt-in requires LETS_CARPOOL_TEST_SQL_CONNECTION.");
 
         try
         {
+            assertionCount = 0;
             RunLocalIntegration(connectionString);
-            return true;
+            return (true, assertionCount);
         }
         catch (Exception exception)
         {
@@ -51,10 +68,15 @@ internal static class SqlTripStoreTests
     private static void RunLocalIntegration(string connectionString)
     {
         var builder = new SqlConnectionStringBuilder(connectionString);
-        if (!IsLoopback(builder.DataSource)
-            || !Regex.IsMatch(builder.InitialCatalog, "^LetsCarpoolTest_[0-9a-fA-F]{32}$", RegexOptions.CultureInvariant)
-            || !string.IsNullOrEmpty(builder.Password))
-            throw new InvalidOperationException("The SQL integration target must be a passwordless, loopback database named LetsCarpoolTest_<32 hex GUID>.");
+        if (!SqlTripStore.IsDisposableLocalTestTarget(builder))
+            throw new InvalidOperationException("The SQL integration target must be a loopback database named LetsCarpoolTest_<32 hex GUID>.");
+
+        var usesSqlAuthentication = !string.IsNullOrEmpty(builder.Password)
+            || builder.Authentication == SqlAuthenticationMethod.SqlPassword;
+        if (usesSqlAuthentication
+            && (string.IsNullOrWhiteSpace(builder.UserID)
+                || builder.Authentication is not (SqlAuthenticationMethod.NotSpecified or SqlAuthenticationMethod.SqlPassword)))
+            throw new InvalidOperationException("SQL-auth test connections must use a local username/password connection string.");
 
         var tripStoreConfiguration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
@@ -65,8 +87,8 @@ internal static class SqlTripStoreTests
             ["Mapbox:AllowPermanentGeocodingStorage"] = "false"
         }).Build();
 
-        var firstStore = new SqlTripStore(tripStoreConfiguration);
-        var secondStore = new SqlTripStore(tripStoreConfiguration);
+        var firstStore = new SqlTripStore(tripStoreConfiguration, allowTestOnlyLocalSqlAuthentication: usesSqlAuthentication);
+        var secondStore = new SqlTripStore(tripStoreConfiguration, allowTestOnlyLocalSqlAuthentication: usesSqlAuthentication);
         var firstService = CreateService(firstStore, serviceConfiguration);
         var secondService = CreateService(secondStore, serviceConfiguration);
         var prefix = "SQL integration " + Guid.NewGuid().ToString("N");
@@ -185,20 +207,6 @@ internal static class SqlTripStoreTests
         }
     }
 
-    private static bool IsLoopback(string dataSource)
-    {
-        var source = dataSource.Trim();
-        return source.Equals(".", StringComparison.OrdinalIgnoreCase)
-            || source.Equals("(local)", StringComparison.OrdinalIgnoreCase)
-            || source.StartsWith(".\\", StringComparison.OrdinalIgnoreCase)
-            || source.StartsWith("(localdb)\\", StringComparison.OrdinalIgnoreCase)
-            || source.Equals("localhost", StringComparison.OrdinalIgnoreCase)
-            || source.StartsWith("localhost,", StringComparison.OrdinalIgnoreCase)
-            || source.StartsWith("localhost\\", StringComparison.OrdinalIgnoreCase)
-            || source.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase)
-            || source.StartsWith("127.0.0.1,", StringComparison.OrdinalIgnoreCase);
-    }
-
     private static TripService CreateService(ITripStore store, IConfiguration configuration) =>
         new(store, new CarpoolPlanner(new HaversineDistanceProvider()), configuration, TimeProvider.System);
 
@@ -245,11 +253,13 @@ internal static class SqlTripStoreTests
 
     private static void True(bool value)
     {
+        assertionCount++;
         if (!value) throw new InvalidOperationException("Expected condition to be true.");
     }
 
     private static void Equal<T>(T expected, T actual)
     {
+        assertionCount++;
         if (!EqualityComparer<T>.Default.Equals(expected, actual))
             throw new InvalidOperationException($"Expected {expected}; got {actual}.");
     }

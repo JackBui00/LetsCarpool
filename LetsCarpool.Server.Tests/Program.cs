@@ -33,10 +33,20 @@ foreach (var (name, run) in checks)
     Console.WriteLine($"PASS {name}");
 }
 Console.WriteLine($"Passed {checks.Length} focused planner checks.");
-if (SqlTripStoreTests.RunLocalIntegrationIfConfigured())
-    Console.WriteLine("PASS Azure SQL store behavior against explicitly configured disposable local SQL database.");
-else
-    Console.WriteLine("SKIP SQL integration: set LETS_CARPOOL_TEST_SQL_CONNECTION only for an initialized unique local disposable test database.");
+Console.WriteLine($"FOCUSED_TESTS_PASSED={checks.Length}");
+try
+{
+    var sqlIntegration = SqlTripStoreTests.RunLocalIntegrationFromEnvironment();
+    if (sqlIntegration.Executed)
+        Console.WriteLine($"SQL_INTEGRATION_RESULT=PASS; cases=1; assertions={sqlIntegration.Assertions}");
+    else
+        Console.WriteLine("SQL_INTEGRATION_RESULT=SKIP; reason=explicit_opt_in_not_set");
+}
+catch (Exception exception)
+{
+    Console.Error.WriteLine($"SQL_INTEGRATION_RESULT=FAIL; reason={exception.GetType().Name}");
+    Environment.ExitCode = 1;
+}
 
 static void CapacityAndCoverage()
 {

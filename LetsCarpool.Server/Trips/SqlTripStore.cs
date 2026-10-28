@@ -64,11 +64,18 @@ internal sealed class SqlTripStore : ITripStore
     private readonly string connectionString;
 
     public SqlTripStore(IConfiguration configuration)
+        : this(configuration, allowTestOnlyLocalSqlAuthentication: false)
     {
-        connectionString = ValidateConfiguration(configuration);
     }
 
-    internal static string ValidateConfiguration(IConfiguration configuration)
+    internal SqlTripStore(IConfiguration configuration, bool allowTestOnlyLocalSqlAuthentication)
+    {
+        connectionString = ValidateConfiguration(configuration, allowTestOnlyLocalSqlAuthentication);
+    }
+
+    internal static string ValidateConfiguration(IConfiguration configuration) => ValidateConfiguration(configuration, false);
+
+    internal static string ValidateConfiguration(IConfiguration configuration, bool allowTestOnlyLocalSqlAuthentication)
     {
         var configured = configuration.GetConnectionString("DefaultConnection");
         if (string.IsNullOrWhiteSpace(configured))
@@ -79,8 +86,20 @@ internal sealed class SqlTripStore : ITripStore
             var builder = new SqlConnectionStringBuilder(configured);
             if (string.IsNullOrWhiteSpace(builder.DataSource) || string.IsNullOrWhiteSpace(builder.InitialCatalog))
                 throw new InvalidOperationException("The SQL trip store requires a server and database in ConnectionStrings:DefaultConnection.");
-            if (!builder.Encrypt || builder.TrustServerCertificate)
-                throw new InvalidOperationException("The SQL trip store requires encryption and TrustServerCertificate=False.");
+            if (!builder.Encrypt)
+                throw new InvalidOperationException("The SQL trip store requires encrypted connections.");
+
+            var isTestOnlySqlAuthentication = allowTestOnlyLocalSqlAuthentication
+                && string.Equals(Environment.GetEnvironmentVariable("LETS_CARPOOL_RUN_SQL_INTEGRATION"), "true", StringComparison.OrdinalIgnoreCase)
+                && IsDisposableLocalTestTarget(builder)
+                && (builder.Authentication is SqlAuthenticationMethod.NotSpecified or SqlAuthenticationMethod.SqlPassword)
+                && !string.IsNullOrWhiteSpace(builder.UserID)
+                && !string.IsNullOrEmpty(builder.Password);
+            if (isTestOnlySqlAuthentication)
+                return builder.ConnectionString;
+
+            if (builder.TrustServerCertificate)
+                throw new InvalidOperationException("The SQL trip store requires TrustServerCertificate=False.");
             if (!string.IsNullOrEmpty(builder.Password))
                 throw new InvalidOperationException("Password-based SQL credentials are not supported for the trip store.");
 
@@ -98,6 +117,24 @@ internal sealed class SqlTripStore : ITripStore
         {
             throw new InvalidOperationException("ConnectionStrings:DefaultConnection is not a valid SQL trip-store connection string.", exception);
         }
+    }
+
+    internal static bool IsDisposableLocalTestTarget(SqlConnectionStringBuilder builder)
+    {
+        var source = builder.DataSource.Trim();
+        var loopback = source.Equals(".", StringComparison.OrdinalIgnoreCase)
+            || source.Equals("(local)", StringComparison.OrdinalIgnoreCase)
+            || source.StartsWith(".\\", StringComparison.OrdinalIgnoreCase)
+            || source.StartsWith("(localdb)\\", StringComparison.OrdinalIgnoreCase)
+            || source.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+            || source.StartsWith("localhost,", StringComparison.OrdinalIgnoreCase)
+            || source.StartsWith("localhost\\", StringComparison.OrdinalIgnoreCase)
+            || source.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase)
+            || source.StartsWith("127.0.0.1,", StringComparison.OrdinalIgnoreCase)
+            || source.Equals("::1", StringComparison.OrdinalIgnoreCase)
+            || source.StartsWith("[::1],", StringComparison.OrdinalIgnoreCase);
+        return loopback
+            && System.Text.RegularExpressions.Regex.IsMatch(builder.InitialCatalog, "^LetsCarpoolTest_[0-9a-fA-F]{32}$", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
     }
 
     public async Task<T> ReadAsync<T>(Func<TripDatabase, T> read, CancellationToken cancellationToken = default)
