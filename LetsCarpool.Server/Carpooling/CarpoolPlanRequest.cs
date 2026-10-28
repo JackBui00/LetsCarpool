@@ -43,6 +43,10 @@ public sealed class CarpoolPlanRequest : IValidatableObject
                 yield return new ValidationResult("Name is required and must be at most 120 characters.", [$"{path}.name"]);
             if (participant.PassengerSeats is < 0 or > 8)
                 yield return new ValidationResult("Passenger seats must be between 0 and 8.", [$"{path}.passengerSeats"]);
+            if (participant.CanDrive == false && participant.PassengerSeats > 0)
+                yield return new ValidationResult("Passenger seats can only be offered when canDrive is true.", [$"{path}.passengerSeats"]);
+            if (participant.MaxDetourMinutes is { } participantDetour && (!double.IsFinite(participantDetour) || participantDetour is < 0 or > 1440))
+                yield return new ValidationResult("Maximum detour must be between 0 and 1440 minutes.", [$"{path}.maxDetourMinutes"]);
             foreach (var result in PlanValidation.ValidateLocation(participant.Origin, $"{path}.origin"))
                 yield return result;
         }
@@ -61,8 +65,10 @@ public sealed record PlanParticipant
     public required string Id { get; init; }
     public required string Name { get; init; }
     public required PlanLocation Origin { get; init; }
+    public bool? CanDrive { get; init; }
     public int PassengerSeats { get; init; }
     public bool CanMeet { get; init; }
+    public double? MaxDetourMinutes { get; init; }
 }
 
 internal static class PlanValidation

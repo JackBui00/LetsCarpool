@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using LetsCarpool.Server.Carpooling;
+using LetsCarpool.Server.Trips;
 
 var checks = new (string Name, Action Run)[]
 {
@@ -10,7 +11,14 @@ var checks = new (string Name, Action Run)[]
     ("no drivers and zero distance", NoDriversAndZeroDistance),
     ("detour rejection", DetourRejection),
     ("participant bound", ParticipantBound),
-    ("operation budget", OperationBudget)
+    ("operation budget", OperationBudget),
+    ("driver availability and per-driver detour", DriverAvailabilityAndDetour),
+    ("trip persistence and token hashing", TripTests.PersistenceAndTokenHashing),
+    ("trip capability isolation and invite rotation", TripTests.CapabilityIsolationAndRotation),
+    ("join idempotency and concurrent capacity", TripTests.JoinIdempotencyAndCapacity),
+    ("trip plan revision invalidation and private assignment", TripTests.PlanRevisionAndPrivateAssignment),
+    ("trip and join request validation", TripTests.TripAndJoinValidation),
+    ("revision race during plan generation", TripTests.GenerationRevisionRace)
 };
 
 foreach (var (name, run) in checks)
@@ -157,6 +165,29 @@ static void OperationBudget()
     {
         Equal(1, exception.OperationLimit);
     }
+}
+
+static void DriverAvailabilityAndDetour()
+{
+    var solo = Plan([new PlanParticipant { Id = "solo", Name = "Solo", Origin = Location(0, 0), CanDrive = true, PassengerSeats = 0 }], Location(0, .1));
+    var soloPickup = solo.Alternatives.Single(alternative => alternative.Strategy == "pickup").Groups.Single();
+    Equal("solo", soloPickup.Driver.Id);
+    Equal(0, soloPickup.Riders.Count);
+
+    var request = new CarpoolPlanRequest
+    {
+        Destination = Location(0, .2),
+        MaxDetourMinutes = 30,
+        Participants =
+        [
+            new PlanParticipant { Id = "strict", Name = "Strict", Origin = Location(0, 0), CanDrive = true, PassengerSeats = 1, MaxDetourMinutes = 0 },
+            new PlanParticipant { Id = "flexible", Name = "Flexible", Origin = Location(.1, 0), CanDrive = true, PassengerSeats = 1, MaxDetourMinutes = 30 },
+            Person("rider", .1, 0)
+        ]
+    };
+    var pickup = new CarpoolPlanner(new HaversineDistanceProvider()).Plan(request).Alternatives.Single(item => item.Strategy == "pickup");
+    Equal(0, pickup.Groups.Single(group => group.Driver.Id == "strict").Riders.Count);
+    Equal("rider", pickup.Groups.Single(group => group.Driver.Id == "flexible").Riders.Single().Id);
 }
 
 static CarpoolPlanResponse Plan(PlanParticipant[] participants, PlanLocation destination, double maxDetourMinutes = 30) =>

@@ -11,7 +11,7 @@ public sealed class CarpoolPlanner(IDistanceProvider distanceProvider, int searc
         "Distances use straight-line Haversine estimates and are not road routes or navigation guidance.",
         "Duration estimates assume 40 km/h and sum travel legs; traffic is not modeled.",
         "Independent rendezvous legs have modeAssumption unspecified; their durations use the same 40 km/h estimate, and no walking, transit, or road mode is inferred.",
-        "maxDetourMinutes limits each driver's vehicle route time beyond direct origin-to-destination time; independent rendezvous travel is excluded from this limit.",
+        "Each driver's maxDetourMinutes (or the request-level default) limits vehicle-route time beyond direct origin-to-destination time; independent rendezvous travel is excluded.",
         "Exact search exhaustively covers offered-driver subsets, participant assignments, pickup orders, and participant-origin meeting candidates for pure pickup and rendezvous alternatives; mixed per-group strategies are not included.",
         $"Search is bounded to {MaximumSearchOperations} operations; exact results are returned only when the full search completes within this limit.",
         "Arrival windows and deadlines are not enforced."
@@ -28,7 +28,7 @@ public sealed class CarpoolPlanner(IDistanceProvider distanceProvider, int searc
             candidates[strategy] = new Candidate(strategy, participants);
 
         var potentialDrivers = Enumerable.Range(0, participants.Count)
-            .Where(index => participants[index].PassengerSeats > 0).ToArray();
+            .Where(index => participants[index].CanDrive ?? (participants[index].PassengerSeats > 0)).ToArray();
         var selectedDrivers = new List<int>();
 
         EnumerateDriverSubsets(0);
@@ -116,6 +116,7 @@ public sealed class CarpoolPlanner(IDistanceProvider distanceProvider, int searc
     private PlanGroup? BestPickup(PlanParticipant driver, PlanParticipant[] riders, CarpoolPlanRequest request, SearchBudget searchBudget)
     {
         var direct = distanceProvider.Estimate(driver.Origin, request.Destination);
+        var maxDetourMinutes = driver.MaxDetourMinutes ?? request.MaxDetourMinutes;
         PlanGroup? best = null;
         var bestKey = string.Empty;
         var order = new List<PlanParticipant>(riders.Length);
@@ -143,7 +144,7 @@ public sealed class CarpoolPlanner(IDistanceProvider distanceProvider, int searc
                 var lastLeg = distanceProvider.Estimate(current, request.Destination);
                 vehicleDistance += lastLeg.DistanceMeters;
                 duration += lastLeg.DurationMinutes;
-                if (duration - direct.DurationMinutes > request.MaxDetourMinutes + 1e-8) return;
+                if (duration - direct.DurationMinutes > maxDetourMinutes + 1e-8) return;
                 stops.Add(new PlanStop(null, request.Destination.Label, request.Destination.Latitude, request.Destination.Longitude, "destination"));
                 var group = new PlanGroup(new(driver.Id, driver.Name), riders.Select(person => new PersonSummary(person.Id, person.Name)).ToArray(), stops,
                     [], vehicleDistance, 0, vehicleDistance, duration, Math.Max(0, duration - direct.DurationMinutes));
@@ -169,6 +170,7 @@ public sealed class CarpoolPlanner(IDistanceProvider distanceProvider, int searc
     {
         if (riders.Any(rider => !rider.CanMeet)) return null;
         var direct = distanceProvider.Estimate(driver.Origin, request.Destination);
+        var maxDetourMinutes = driver.MaxDetourMinutes ?? request.MaxDetourMinutes;
         PlanGroup? best = null;
         var bestKey = string.Empty;
         var meetingOptions = new[] { driver }.Concat(riders).ToArray();
@@ -178,7 +180,7 @@ public sealed class CarpoolPlanner(IDistanceProvider distanceProvider, int searc
             var toMeeting = distanceProvider.Estimate(driver.Origin, meetingPerson.Origin);
             var toDestination = distanceProvider.Estimate(meetingPerson.Origin, request.Destination);
             var vehicleDuration = toMeeting.DurationMinutes + toDestination.DurationMinutes;
-            if (vehicleDuration - direct.DurationMinutes > request.MaxDetourMinutes + 1e-8) continue;
+            if (vehicleDuration - direct.DurationMinutes > maxDetourMinutes + 1e-8) continue;
             var independentDistance = 0d;
             var independentDuration = 0d;
             var independentLegs = new List<IndependentTravelLeg>();
