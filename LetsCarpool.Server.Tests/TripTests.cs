@@ -56,7 +56,8 @@ internal static class TripTests
         ThrowsStatus(404, () => fixture.Service.GetInviteAsync(tripA.TripId, rotatedInvite.InviteCapability, CancellationToken.None).GetAwaiter().GetResult());
         var rotatedOwner = fixture.Service.RotateOrganizerAsync(tripA.TripId, tripA.OrganizerCapability, CancellationToken.None).GetAwaiter().GetResult();
         ThrowsStatus(404, () => fixture.Service.GetOrganizerAsync(tripA.TripId, tripA.OrganizerCapability, CancellationToken.None).GetAwaiter().GetResult());
-        fixture.Service.GetOrganizerAsync(tripA.TripId, rotatedOwner.OrganizerCapability, CancellationToken.None).GetAwaiter().GetResult();
+        var rotatedOwnerView = fixture.Service.GetOrganizerAsync(tripA.TripId, rotatedOwner.OrganizerCapability, CancellationToken.None).GetAwaiter().GetResult();
+        Equal(rotatedOwner.OrganizerExpiresAt, rotatedOwnerView.OrganizerExpiresAt);
     }
 
     public static void JoinIdempotencyAndCapacity()
@@ -166,10 +167,15 @@ internal static class TripTests
         fixture.Service.SelectPlanAsync(trip.TripId, generated.PlanId, trip.OrganizerCapability, rider.Revision, "rendezvous", CancellationToken.None).GetAwaiter().GetResult();
 
         var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        var inviteJson = JsonSerializer.Serialize(fixture.Service.GetInviteAsync(trip.TripId, trip.InviteCapability, CancellationToken.None).GetAwaiter().GetResult(), options);
+        using var invite = JsonDocument.Parse(inviteJson);
+        True(!invite.RootElement.TryGetProperty("organizerExpiresAt", out _));
+
         var organizerJson = JsonSerializer.Serialize(fixture.Service.GetOrganizerAsync(trip.TripId, trip.OrganizerCapability, CancellationToken.None).GetAwaiter().GetResult(), options);
         using var organizer = JsonDocument.Parse(organizerJson);
         var root = organizer.RootElement;
         True(root.TryGetProperty("inviteExpiresAt", out _));
+        Equal(trip.OrganizerExpiresAt, root.GetProperty("organizerExpiresAt").GetDateTimeOffset());
         True(root.TryGetProperty("selectedStrategy", out var selected) && selected.GetString() == "rendezvous");
         True(!root.TryGetProperty("currentPlanId", out _));
         var currentPlan = root.GetProperty("currentPlan");
@@ -182,6 +188,7 @@ internal static class TripTests
         using var guest = JsonDocument.Parse(guestJson);
         var guestRoot = guest.RootElement;
         True(guestRoot.TryGetProperty("inviteExpiresAt", out _));
+        True(!guestRoot.TryGetProperty("organizerExpiresAt", out _));
         True(guestRoot.TryGetProperty("profile", out var profile));
         Equal("Rider", profile.GetProperty("name").GetString());
         True(profile.GetProperty("locationDisclosureAccepted").GetBoolean());

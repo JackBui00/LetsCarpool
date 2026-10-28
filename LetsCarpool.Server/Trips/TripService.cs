@@ -110,8 +110,8 @@ public sealed class TripService
         store.ReadAsync(database =>
         {
             var trip = FindTrip(database, tripId);
-            RequireCapability(trip, token, "organizer", null);
-            return ToOrganizerView(trip);
+            var capability = RequireCapability(trip, token, "organizer", null);
+            return ToOrganizerView(trip, capability.ExpiresAt);
         }, cancellationToken);
 
     public async Task<OrganizerTripView> UpdateTripAsync(string tripId, string? token, UpdateTripRequest request, CancellationToken cancellationToken)
@@ -119,7 +119,7 @@ public sealed class TripService
         var updated = await store.MutateAsync(database =>
         {
             var trip = FindTrip(database, tripId);
-            RequireCapability(trip, token, "organizer", null);
+            var capability = RequireCapability(trip, token, "organizer", null);
             RequireRevision(trip, request.ExpectedRevision);
             var name = request.Name?.Trim() ?? trip.Name;
             if (name.Length == 0) throw Validation("name", "Trip name is required.");
@@ -136,7 +136,7 @@ public sealed class TripService
             }
             ExtendAccessExpiry(trip, arrival);
             InvalidatePlan(trip);
-            return ToOrganizerView(trip);
+            return ToOrganizerView(trip, capability.ExpiresAt);
         }, cancellationToken);
         return updated;
     }
@@ -292,8 +292,8 @@ public sealed class TripService
             return new CurrentRevisionResponse(trip.Revision);
         }, cancellationToken);
 
-    private static OrganizerTripView ToOrganizerView(StoredTrip trip) => new(
-        trip.Id, trip.Name, trip.ArrivalAt, trip.TimeZoneId, trip.Destination, trip.InviteExpiresAt, trip.Revision,
+    private static OrganizerTripView ToOrganizerView(StoredTrip trip, DateTimeOffset organizerExpiresAt) => new(
+        trip.Id, trip.Name, trip.ArrivalAt, trip.TimeZoneId, trip.Destination, trip.InviteExpiresAt, organizerExpiresAt, trip.Revision,
         trip.Participants.Select(ToParticipantView).ToArray(), trip.CurrentPlan?.SelectedStrategy,
         trip.CurrentPlan is null ? null : new GeneratedTripPlanView(trip.CurrentPlan.Id, trip.CurrentPlan.BasedOnRevision, trip.CurrentPlan.Result),
         trip.PlanStale);
