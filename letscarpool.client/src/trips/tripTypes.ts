@@ -4,6 +4,19 @@ import { isValidTimeZone } from './dateTime.ts';
 export type LocationDto = { label: string; latitude: number; longitude: number };
 export type TripSummary = { tripId: string; name: string; arrivalAt: string; timeZoneId: string; destination: LocationDto; inviteExpiresAt: string };
 export type CreatedTrip = { tripId: string; revision: number; organizerCapability: string; inviteCapability: string; inviteExpiresAt: string };
+export type PlanAlternativeDto = {
+    strategy: 'pickup' | 'rendezvous';
+    totalDistanceMeters: number;
+    durationMinutes: number;
+    unassigned: Array<{ participantId: string; reason: string }>;
+    warnings: string[];
+    groups: Array<{
+        driver: { id: string; name: string };
+        riders: Array<{ id: string; name: string }>;
+        stops: Array<{ participantId: string | null; label: string; latitude: number; longitude: number; kind: 'pickup' | 'rendezvous' | 'destination' }>;
+    }>;
+};
+export type GeneratedPlanDto = { planId: string; basedOnRevision: number; alternatives: PlanAlternativeDto[] };
 export type TripParticipantDraft = {
     name: string;
     origin: PlaceSelection;
@@ -38,4 +51,38 @@ export function readRevision(value: unknown) {
     const nested = source.trip as Record<string, unknown> | undefined;
     const revision = source.revision ?? nested?.revision;
     return typeof revision === 'number' && Number.isSafeInteger(revision) && revision >= 0 ? revision : null;
+}
+
+export function readGeneratedPlan(value: unknown): GeneratedPlanDto | null {
+    if (!isRecord(value)) return null;
+    const { planId, basedOnRevision, alternatives } = value;
+    if (typeof planId !== 'string' || !planId || !isRevision(basedOnRevision) || !Array.isArray(alternatives) || !alternatives.every(isPlanAlternative)) return null;
+    return value as GeneratedPlanDto;
+}
+
+function isPlanAlternative(value: unknown): value is PlanAlternativeDto {
+    if (!isRecord(value) || (value.strategy !== 'pickup' && value.strategy !== 'rendezvous') || !isFiniteNumber(value.totalDistanceMeters) || !isFiniteNumber(value.durationMinutes) || !Array.isArray(value.unassigned) || !value.unassigned.every(item => isRecord(item) && typeof item.participantId === 'string' && typeof item.reason === 'string') || !Array.isArray(value.warnings) || !value.warnings.every(item => typeof item === 'string') || !Array.isArray(value.groups)) return false;
+    return value.groups.every(group => isRecord(group)
+        && isNamedPerson(group.driver)
+        && Array.isArray(group.riders) && group.riders.every(isNamedPerson)
+        && Array.isArray(group.stops) && group.stops.every(stop => isRecord(stop)
+            && (typeof stop.participantId === 'string' || stop.participantId === null)
+            && typeof stop.label === 'string' && isFiniteNumber(stop.latitude) && isFiniteNumber(stop.longitude)
+            && (stop.kind === 'pickup' || stop.kind === 'rendezvous' || stop.kind === 'destination')));
+}
+
+function isNamedPerson(value: unknown): value is { id: string; name: string } {
+    return isRecord(value) && typeof value.id === 'string' && typeof value.name === 'string';
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isRevision(value: unknown): value is number {
+    return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+
+function isFiniteNumber(value: unknown): value is number {
+    return typeof value === 'number' && Number.isFinite(value);
 }
