@@ -1,0 +1,65 @@
+name: Build and verify Azure artifact
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: letscarpool.client/package-lock.json
+
+      - name: Restore and verify client
+        working-directory: letscarpool.client
+        env:
+          VITE_MAPBOX_ACCESS_TOKEN: ${{ vars.VITE_MAPBOX_ACCESS_TOKEN }}
+        run: |
+          npm ci
+          node --experimental-strip-types --test tests/*.test.mjs
+          npm run lint
+          npm run build
+
+      - name: Restore and verify server
+        run: |
+          dotnet restore LetsCarpool.sln
+          dotnet build LetsCarpool.sln --configuration Release --no-restore
+          dotnet run --project LetsCarpool.Server.Tests/LetsCarpool.Server.Tests.csproj --configuration Release --no-build
+
+      - name: Publish API and colocated React app
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p LetsCarpool.Server/wwwroot
+          cp -a letscarpool.client/dist/. LetsCarpool.Server/wwwroot/
+          dotnet publish LetsCarpool.Server/LetsCarpool.Server.csproj \
+            --configuration Release --no-restore --output "$RUNNER_TEMP/publish"
+          test -s "$RUNNER_TEMP/publish/index.html"
+          test -n "$(find "$RUNNER_TEMP/publish/assets" -maxdepth 1 -type f -print -quit)"
+          test -f "$RUNNER_TEMP/publish/LetsCarpool.Server.dll"
+          cd "$RUNNER_TEMP/publish"
+          zip -qr "$RUNNER_TEMP/letscarpool-appservice.zip" .
+          unzip -l "$RUNNER_TEMP/letscarpool-appservice.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: letscarpool-appservice
+          path: ${{ runner.temp }}/letscarpool-appservice.zip
+          if-no-files-found: error
+          retention-days: 14
