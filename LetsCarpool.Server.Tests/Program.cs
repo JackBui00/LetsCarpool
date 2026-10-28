@@ -38,7 +38,10 @@ try
 {
     var sqlIntegration = SqlTripStoreTests.RunLocalIntegrationFromEnvironment();
     if (sqlIntegration.Executed)
+    {
         Console.WriteLine($"SQL_INTEGRATION_RESULT=PASS; cases=1; assertions={sqlIntegration.Assertions}");
+        Console.WriteLine($"SQL_INTEGRATION_SCENARIOS={string.Join(",", sqlIntegration.Scenarios)}");
+    }
     else
         Console.WriteLine("SQL_INTEGRATION_RESULT=SKIP; reason=explicit_opt_in_not_set");
 }

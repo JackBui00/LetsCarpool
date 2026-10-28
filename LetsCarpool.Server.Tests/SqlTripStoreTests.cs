@@ -8,6 +8,13 @@ internal static class SqlTripStoreTests
     private const string RunIntegrationVariable = "LETS_CARPOOL_RUN_SQL_INTEGRATION";
     private const string TestConnectionVariable = "LETS_CARPOOL_TEST_SQL_CONNECTION";
     private const int MinimumSqlIntegrationAssertions = 33;
+    private static readonly string[] RequiredScenarios =
+    [
+        "concurrent_same_key_replay_across_stores",
+        "rollback_after_mutation_fresh_store_read",
+        "capability_rotation_revoke_expiry_persisted_state",
+        "unavailable_database_fail_closed_no_json_fallback"
+    ];
     private static int assertionCount;
 
     public static void ProviderSelectionAndConfiguration()
@@ -63,22 +70,24 @@ internal static class SqlTripStoreTests
         }
     }
 
-    public static (bool Executed, int Assertions) RunLocalIntegrationFromEnvironment()
+    public static (bool Executed, int Assertions, IReadOnlyList<string> Scenarios) RunLocalIntegrationFromEnvironment()
     {
         var optedIn = string.Equals(Environment.GetEnvironmentVariable(RunIntegrationVariable), "true", StringComparison.OrdinalIgnoreCase);
         var connectionString = Environment.GetEnvironmentVariable(TestConnectionVariable);
         if (!optedIn)
-            return (false, 0);
+            return (false, 0, Array.Empty<string>());
         if (string.IsNullOrWhiteSpace(connectionString))
             throw new InvalidOperationException("SQL integration opt-in requires LETS_CARPOOL_TEST_SQL_CONNECTION.");
 
         try
         {
             assertionCount = 0;
-            RunLocalIntegration(connectionString);
+            var scenarios = RunLocalIntegration(connectionString);
             if (assertionCount < MinimumSqlIntegrationAssertions)
                 throw new InvalidOperationException("The SQL integration scenario completed with fewer assertions than required.");
-            return (true, assertionCount);
+            if (!RequiredScenarios.SequenceEqual(scenarios, StringComparer.Ordinal))
+                throw new InvalidOperationException("The SQL integration scenario did not complete its required named coverage.");
+            return (true, assertionCount, scenarios);
         }
         catch (Exception exception)
         {
@@ -87,8 +96,9 @@ internal static class SqlTripStoreTests
         }
     }
 
-    private static void RunLocalIntegration(string connectionString)
+    private static IReadOnlyList<string> RunLocalIntegration(string connectionString)
     {
+        var completedScenarios = new List<string>();
         var builder = new SqlConnectionStringBuilder(connectionString);
         if (!SqlTripStore.IsDisposableLocalTestTarget(builder))
             throw new InvalidOperationException("The SQL integration target must be a loopback database named LetsCarpoolTest_<32 hex GUID>.");
@@ -142,6 +152,7 @@ internal static class SqlTripStoreTests
             Equal(1, sameKeyResults.Count(result => result == "created"));
             Equal(1, sameKeyResults.Count(result => result == "replay"));
             Equal(1, secondStore.ReadAsync(database => database.Trips.Single(trip => trip.Id == idempotencyTrip.TripId).Participants.Count).GetAwaiter().GetResult());
+            completedScenarios.Add("concurrent_same_key_replay_across_stores");
 
             var created = firstService.CreateAsync(CreateRequest(prefix + " main"), CancellationToken.None).GetAwaiter().GetResult();
             createdTripIds.Add(created.TripId);
@@ -220,28 +231,33 @@ internal static class SqlTripStoreTests
             catch (InvalidOperationException exception) when (exception.Message == "intentional rollback after state mutation") { }
             Equal(tripCountBeforeRollback, reopenedStore.ReadAsync(database => database.Trips.Count).GetAwaiter().GetResult());
             True(!reopenedStore.ReadAsync(database => database.Trips.Any(trip => trip.Id == rollbackTripId)).GetAwaiter().GetResult());
+            completedScenarios.Add("rollback_after_mutation_fresh_store_read");
 
             var lifecycleTime = new MutableTimeProvider(DateTimeOffset.UtcNow);
             var lifecycleService = CreateService(firstStore, serviceConfiguration, lifecycleTime);
+            var lifecycleReloadedService = CreateService(
+                new SqlTripStore(tripStoreConfiguration, allowTestOnlyLocalSqlAuthentication: usesSqlAuthentication),
+                serviceConfiguration, lifecycleTime);
             var lifecycleTrip = lifecycleService.CreateAsync(CreateRequest(prefix + " capability lifecycle"), CancellationToken.None).GetAwaiter().GetResult();
             createdTripIds.Add(lifecycleTrip.TripId);
             var firstRotation = lifecycleService.RotateInviteAsync(lifecycleTrip.TripId, lifecycleTrip.OrganizerCapability, CancellationToken.None).GetAwaiter().GetResult();
             True(firstRotation.InviteExpiresAt > lifecycleTime.GetUtcNow());
-            Equal(404, ThrowsTripApiException(() => lifecycleService.GetInviteAsync(lifecycleTrip.TripId, lifecycleTrip.InviteCapability, CancellationToken.None).GetAwaiter().GetResult()).Status);
-            True(lifecycleService.GetInviteAsync(lifecycleTrip.TripId, firstRotation.InviteCapability, CancellationToken.None).GetAwaiter().GetResult() is not null);
+            Equal(404, ThrowsTripApiException(() => lifecycleReloadedService.GetInviteAsync(lifecycleTrip.TripId, lifecycleTrip.InviteCapability, CancellationToken.None).GetAwaiter().GetResult()).Status);
+            True(lifecycleReloadedService.GetInviteAsync(lifecycleTrip.TripId, firstRotation.InviteCapability, CancellationToken.None).GetAwaiter().GetResult() is not null);
             lifecycleService.RevokeInviteAsync(lifecycleTrip.TripId, lifecycleTrip.OrganizerCapability, CancellationToken.None).GetAwaiter().GetResult();
-            Equal(404, ThrowsTripApiException(() => lifecycleService.GetInviteAsync(lifecycleTrip.TripId, firstRotation.InviteCapability, CancellationToken.None).GetAwaiter().GetResult()).Status);
-            True(lifecycleService.GetOrganizerAsync(lifecycleTrip.TripId, lifecycleTrip.OrganizerCapability, CancellationToken.None).GetAwaiter().GetResult() is not null);
+            Equal(404, ThrowsTripApiException(() => lifecycleReloadedService.GetInviteAsync(lifecycleTrip.TripId, firstRotation.InviteCapability, CancellationToken.None).GetAwaiter().GetResult()).Status);
+            True(lifecycleReloadedService.GetOrganizerAsync(lifecycleTrip.TripId, lifecycleTrip.OrganizerCapability, CancellationToken.None).GetAwaiter().GetResult() is not null);
             var expiringInvite = lifecycleService.RotateInviteAsync(lifecycleTrip.TripId, lifecycleTrip.OrganizerCapability, CancellationToken.None).GetAwaiter().GetResult();
             var lifecycleParticipant = lifecycleService.JoinAsync(lifecycleTrip.TripId, expiringInvite.InviteCapability, Guid.NewGuid().ToString(), JoinRequest("expiring participant"), CancellationToken.None).GetAwaiter().GetResult();
             var organizerRotation = lifecycleService.RotateOrganizerAsync(lifecycleTrip.TripId, lifecycleTrip.OrganizerCapability, CancellationToken.None).GetAwaiter().GetResult();
             True(organizerRotation.OrganizerExpiresAt > lifecycleTime.GetUtcNow());
-            Equal(404, ThrowsTripApiException(() => lifecycleService.GetOrganizerAsync(lifecycleTrip.TripId, lifecycleTrip.OrganizerCapability, CancellationToken.None).GetAwaiter().GetResult()).Status);
-            True(lifecycleService.GetOrganizerAsync(lifecycleTrip.TripId, organizerRotation.OrganizerCapability, CancellationToken.None).GetAwaiter().GetResult() is not null);
+            Equal(404, ThrowsTripApiException(() => lifecycleReloadedService.GetOrganizerAsync(lifecycleTrip.TripId, lifecycleTrip.OrganizerCapability, CancellationToken.None).GetAwaiter().GetResult()).Status);
+            True(lifecycleReloadedService.GetOrganizerAsync(lifecycleTrip.TripId, organizerRotation.OrganizerCapability, CancellationToken.None).GetAwaiter().GetResult() is not null);
             lifecycleTime.Advance(TimeSpan.FromDays(91));
-            Equal(404, ThrowsTripApiException(() => lifecycleService.GetInviteAsync(lifecycleTrip.TripId, expiringInvite.InviteCapability, CancellationToken.None).GetAwaiter().GetResult()).Status);
-            Equal(404, ThrowsTripApiException(() => lifecycleService.GetParticipantAsync(lifecycleTrip.TripId, lifecycleParticipant.ParticipantCapability, CancellationToken.None).GetAwaiter().GetResult()).Status);
-            Equal(404, ThrowsTripApiException(() => lifecycleService.GetOrganizerAsync(lifecycleTrip.TripId, organizerRotation.OrganizerCapability, CancellationToken.None).GetAwaiter().GetResult()).Status);
+            Equal(404, ThrowsTripApiException(() => lifecycleReloadedService.GetInviteAsync(lifecycleTrip.TripId, expiringInvite.InviteCapability, CancellationToken.None).GetAwaiter().GetResult()).Status);
+            Equal(404, ThrowsTripApiException(() => lifecycleReloadedService.GetParticipantAsync(lifecycleTrip.TripId, lifecycleParticipant.ParticipantCapability, CancellationToken.None).GetAwaiter().GetResult()).Status);
+            Equal(404, ThrowsTripApiException(() => lifecycleReloadedService.GetOrganizerAsync(lifecycleTrip.TripId, organizerRotation.OrganizerCapability, CancellationToken.None).GetAwaiter().GetResult()).Status);
+            completedScenarios.Add("capability_rotation_revoke_expiry_persisted_state");
 
             var unavailableBuilder = new SqlConnectionStringBuilder(connectionString)
             {
@@ -254,6 +270,8 @@ internal static class SqlTripStoreTests
             }).Build();
             var unavailableStore = new SqlTripStore(unavailableConfiguration, allowTestOnlyLocalSqlAuthentication: usesSqlAuthentication);
             ThrowsStoreUnavailable(() => unavailableStore.ReadAsync(database => database.Trips.Count).GetAwaiter().GetResult());
+            Equal(TripStoreProvider.SqlServer, TripStoreProviderSelection.Parse("SqlServer"));
+            completedScenarios.Add("unavailable_database_fail_closed_no_json_fallback");
 
             using var sqlConnection = new SqlConnection(connectionString);
             sqlConnection.Open();
@@ -301,6 +319,8 @@ internal static class SqlTripStoreTests
             if (createdTripIds.Count > 0)
                 firstStore.MutateAsync(database => database.Trips.RemoveAll(trip => createdTripIds.Contains(trip.Id)), CancellationToken.None).GetAwaiter().GetResult();
         }
+
+        return completedScenarios;
     }
 
     private static TripService CreateService(ITripStore store, IConfiguration configuration, TimeProvider? timeProvider = null) =>

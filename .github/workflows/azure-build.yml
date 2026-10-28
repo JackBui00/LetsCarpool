@@ -157,6 +157,11 @@ jobs:
           sql_line="$(printf '%s\n' "$test_output" | grep -E '^SQL_INTEGRATION_RESULT=')"
           [[ "$sql_line" =~ ^SQL_INTEGRATION_RESULT=PASS\;\ cases=1\;\ assertions=([0-9]+)$ ]] || { echo "SQL integration did not report one passing case with assertions." >&2; exit 1; }
           test "${BASH_REMATCH[1]}" -ge 33 || { echo "SQL integration reported fewer than 33 expected scenario assertions." >&2; exit 1; }
+          scenario_result_count="$(printf '%s\n' "$test_output" | grep -c -E '^SQL_INTEGRATION_SCENARIOS=' || true)"
+          test "$scenario_result_count" = 1 || { echo "Expected exactly one SQL scenario coverage list." >&2; exit 1; }
+          scenario_line="$(printf '%s\n' "$test_output" | grep -E '^SQL_INTEGRATION_SCENARIOS=')"
+          expected_scenarios='SQL_INTEGRATION_SCENARIOS=concurrent_same_key_replay_across_stores,rollback_after_mutation_fresh_store_read,capability_rotation_revoke_expiry_persisted_state,unavailable_database_fail_closed_no_json_fallback'
+          test "$scenario_line" = "$expected_scenarios" || { echo "SQL integration did not report the required scenario coverage." >&2; exit 1; }
           restart_line="$(printf '%s\n' "$test_output" | grep -E '^SQL_PROCESS_RESTART_TESTED=' || true)"
           test "$restart_line" = 'SQL_PROCESS_RESTART_TESTED=false' || { echo "Expected explicit disclosure that process restart coverage is unverified." >&2; exit 1; }
 
