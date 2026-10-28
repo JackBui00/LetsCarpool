@@ -52,3 +52,8 @@ export default tseslint.config({
   },
 })
 ```
+# Local Google Maps setup
+
+The trip planner uses Google Maps JavaScript API and Places API (New) for address/venue selection and its location map. Set `VITE_GOOGLE_MAPS_API_KEY` in `letscarpool.client/.env.local`; the key is intentionally public in the browser, so restrict it to your local development referrer (for example `http://localhost:57082/*` and `http://127.0.0.1:57082/*`) and restrict enabled APIs to Maps JavaScript API and Places API. Do not commit a key. No key is required to load the app, but search/map and planning with unresolved locations remain unavailable until selections resolve.
+
+The map only confirms selected locations. Planner distances and durations remain Haversine estimates; this UI does not display a road route or navigation path.
