@@ -78,6 +78,10 @@ input[type=range] { width: 100%; accent-color: #397453; }
 .stop-person { color: #344e40; font-weight: 700; }
 .stop-kind { padding: 3px 5px; border-radius: 4px; color: #8c724e; background: #f7f1e7; font-size: 9px; }
 .stop-location { flex-basis: 100%; padding-left: 13px; color: #9ca59e; font-size: 10px; }
+.travel-legs { margin: 12px 0 3px 32px; padding: 11px 13px; border-radius: 7px; background: #f3f6f1; }
+.travel-legs h5 { margin: 0 0 7px; color: #466451; font: 700 10px Manrope, sans-serif; }
+.travel-legs p { margin: 5px 0; color: #738078; font-size: 10px; line-height: 1.5; }
+.travel-legs strong { color: #405b49; }
 .unassigned { margin-top: 13px; padding: 12px; border-radius: 7px; background: #faf5ed; color: #83725c; }
 .unassigned h4 { margin-bottom: 5px; color: #826743; }
 .unassigned p { margin: 5px 0 0; font-size: 11px; }
