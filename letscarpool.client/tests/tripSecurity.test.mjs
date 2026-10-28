@@ -4,7 +4,7 @@ import { capabilityStorageKey, getCapability, getOrganizerExpiry, participantCon
 import { tripApi } from '../src/trips/tripApi.ts';
 import { participantProfileUpdate } from '../src/trips/participantProfile.ts';
 import { isPlanStale, readAssignmentRole, readCreatedTrip, readGeneratedPlan, readLocationDto, readTripSummary, selectedLocation, selectedTripLocation } from '../src/trips/tripTypes.ts';
-import { readOwnAssignment } from '../src/trips/participantAssignment.ts';
+import { participantAssignmentState, readOwnAssignment } from '../src/trips/participantAssignment.ts';
 import { classifyJoinFailure, hasTripMayHaveJoined, joinAttemptStorageKey, legacyJoinAttemptKey, markTripMayHaveJoined, readJoinAttempt, removeJoinAttempt, writeJoinAttempt } from '../src/trips/joinAttemptSession.ts';
 import { demoPlace, editPlaceLabel } from '../src/places/placeSelection.ts';
 
@@ -92,6 +92,19 @@ test('server planStale prevents selection even when revision metadata matches', 
     assert.equal(isPlanStale(false, false, 5, generated), true);
     assert.equal(isPlanStale(false, true, 4, generated), true);
     assert.equal(isPlanStale(false, false, 4, generated), false);
+});
+
+test('participant view distinguishes stale, assigned, unassigned, and no-plan states', () => {
+    const assignment = readOwnAssignment({
+        strategy: 'pickup', role: 'driver', driver: { id: 'd1', name: 'Driver' }, riders: [],
+        stops: [{ participantId: null, label: 'Venue', latitude: 37.8, longitude: -122.3, kind: 'destination' }],
+        totalDistanceMeters: 1000, vehicleDistanceMeters: 1000, independentTravelDistanceMeters: 0, durationMinutes: 1.5,
+        ownIndependentTravelLeg: null,
+    }, 'd1');
+    assert.equal(participantAssignmentState(true, assignment, null), 'stale');
+    assert.equal(participantAssignmentState(false, assignment, null), 'assigned');
+    assert.equal(participantAssignmentState(false, null, 'No seats available'), 'unassigned');
+    assert.equal(participantAssignmentState(false, null, null), 'no-plan');
 });
 
 test('role API calls use bearer header and keep capability out of request URL', async () => {

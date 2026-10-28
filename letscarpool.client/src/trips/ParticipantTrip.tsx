@@ -6,14 +6,14 @@ import { clearCapability, getCapability } from './capabilitySession';
 import { participantProfileUpdate, type ParticipantProfileDraft } from './participantProfile';
 import { tripApi } from './tripApi';
 import { readLocationDto, readRevision, readTripSummary, selectedTripLocation, type LocationDto, type TripSummary } from './tripTypes';
-import { readOwnAssignment, type OwnAssignment, type OwnTravelLeg } from './participantAssignment';
+import { participantAssignmentState, readOwnAssignment, type OwnAssignment, type OwnTravelLeg } from './participantAssignment';
 import { useGuardedRequest } from './useGuardedRequest';
 import { Notice, SectionTitle } from './TripUi';
 
 const mapToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
 type Props = { tripId: string; navigate: (path: string) => void };
 type Profile = ParticipantProfileDraft;
-type SelfView = { revision: number; trip: TripSummary; profile: Profile; assignment?: OwnAssignment | null };
+type SelfView = { revision: number; trip: TripSummary; profile: Profile; assignment: OwnAssignment | null; unassignedReason: string | null; planStale: boolean };
 
 export function ParticipantTrip({ tripId, navigate }: Props) {
     const [token, setToken] = useState(() => getCapability('participant', tripId));
@@ -64,6 +64,7 @@ export function ParticipantTrip({ tripId, navigate }: Props) {
     if (!saved || !draft) return <section className="trip-panel"><SectionTitle number="01" title="Your trip entry" note="Loading your private participant view…" />{request.error && <><Notice kind="error">{request.error}</Notice><button className="secondary-button" onClick={leaveThisTab}>Clear this participant access</button></>}</section>;
 
     const assignment = saved.assignment;
+    const assignmentState = participantAssignmentState(saved.planStale, assignment, saved.unassignedReason);
     const stops = assignment?.stops ?? [];
     const independentTravelLegs = assignment?.ownIndependentTravelLeg ? [assignment.ownIndependentTravelLeg] : [];
     const driver = assignment?.driver;
@@ -92,7 +93,10 @@ export function ParticipantTrip({ tripId, navigate }: Props) {
             </form>
             <section className="trip-panel"><SectionTitle number="02" title="Your saved assignment" note="Only your own assigned group and necessary stops appear here." />
                 {dirty ? <Notice>Your entry has unsaved edits. The assignment below still reflects your last saved response.</Notice> : null}
-                {!assignment ? <p className="status-note">The organizer has not selected a current plan yet.</p> : <OwnAssignmentCard assignment={assignment} driver={driver} riders={riders} stops={stops} independentTravelLegs={independentTravelLegs} totalDistanceMeters={assignment.totalDistanceMeters} durationMinutes={assignment.durationMinutes} />}
+                {assignmentState === 'stale' && <Notice kind="error">The trip changed after the last plan. Your previous assignment is stale; wait for the organizer to generate and select a current plan.</Notice>}
+                {assignmentState === 'unassigned' && <p className="status-note">The selected plan could not assign you: {saved.unassignedReason}</p>}
+                {assignmentState === 'no-plan' && <p className="status-note">The organizer has not selected a current plan yet.</p>}
+                {assignmentState === 'assigned' && assignment && <OwnAssignmentCard assignment={assignment} driver={driver} riders={riders} stops={stops} independentTravelLegs={independentTravelLegs} totalDistanceMeters={assignment.totalDistanceMeters} durationMinutes={assignment.durationMinutes} />}
                 <p className="status-note">Distances are estimates, not road routing. Arrival time is coordination information and is not guaranteed.</p>
             </section>
         </div><TripMap token={mapToken} selecting={manualTarget} onPinSelect={point => { if (!manualTarget) return; edit(current => ({ ...current, origin: { label: manualTarget.label, latitude: point.latitude, longitude: point.longitude, placeId: null, source: 'user-provided' } })); setManualTarget(null); }} locations={mapPlaces} /></div>
@@ -116,7 +120,9 @@ function normalizeSelf(value: unknown, tripId: string): SelfView | null {
     const profile = (source.profile && typeof source.profile === 'object' ? source.profile : source) as Record<string, unknown>;
     const trip = readTripSummary(value);
     const revision = readRevision(value);
-    if (!trip || trip.tripId !== tripId || revision === null || typeof profile.id !== 'string' || !profile.id || typeof profile.name !== 'string' || typeof profile.joinedAt !== 'string' || !Number.isFinite(Date.parse(profile.joinedAt)) || typeof profile.canDrive !== 'boolean' || typeof profile.passengerSeats !== 'number' || !Number.isInteger(profile.passengerSeats) || profile.passengerSeats < 0 || profile.passengerSeats > 8 || typeof profile.canMeet !== 'boolean' || typeof profile.maxDetourMinutes !== 'number' || !Number.isFinite(profile.maxDetourMinutes) || profile.maxDetourMinutes < 0 || profile.maxDetourMinutes > 1440) return null;
+    if (!trip || trip.tripId !== tripId || revision === null || typeof source.planStale !== 'boolean'
+        || (source.unassignedReason !== null && typeof source.unassignedReason !== 'string')
+        || typeof profile.id !== 'string' || !profile.id || typeof profile.name !== 'string' || typeof profile.joinedAt !== 'string' || !Number.isFinite(Date.parse(profile.joinedAt)) || typeof profile.canDrive !== 'boolean' || typeof profile.passengerSeats !== 'number' || !Number.isInteger(profile.passengerSeats) || profile.passengerSeats < 0 || profile.passengerSeats > 8 || typeof profile.canMeet !== 'boolean' || typeof profile.maxDetourMinutes !== 'number' || !Number.isFinite(profile.maxDetourMinutes) || profile.maxDetourMinutes < 0 || profile.maxDetourMinutes > 1440) return null;
     const rawOrigin = readLocationDto(profile.origin);
     if (!rawOrigin) return null;
     const origin = locationToPlace(rawOrigin);
@@ -132,6 +138,8 @@ function normalizeSelf(value: unknown, tripId: string): SelfView | null {
         revision, trip,
         profile: { name: profile.name, origin, canDrive: profile.canDrive, passengerSeats: profile.passengerSeats, canMeet: profile.canMeet, maxDetourMinutes: profile.maxDetourMinutes },
         assignment,
+        unassignedReason: typeof source.unassignedReason === 'string' ? source.unassignedReason : null,
+        planStale: source.planStale,
     };
 }
 

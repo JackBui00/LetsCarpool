@@ -20,6 +20,15 @@ export type OwnAssignment = {
     ownIndependentTravelLeg: OwnTravelLeg | null;
 };
 
+export type ParticipantAssignmentState = 'stale' | 'assigned' | 'unassigned' | 'no-plan';
+
+export function participantAssignmentState(planStale: boolean, assignment: OwnAssignment | null, unassignedReason: string | null): ParticipantAssignmentState {
+    if (planStale) return 'stale';
+    if (assignment) return 'assigned';
+    if (unassignedReason) return 'unassigned';
+    return 'no-plan';
+}
+
 export function readOwnAssignment(value: unknown, participantId: string): OwnAssignment | null {
     if (!isRecord(value) || (value.strategy !== 'pickup' && value.strategy !== 'rendezvous')
         || (value.role !== 'driver' && value.role !== 'rider') || !isNamedPerson(value.driver)
