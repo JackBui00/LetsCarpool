@@ -70,6 +70,12 @@ app.UseAuthorization();
 
 app.MapControllers();
 
+app.MapFallback("/api/{**path}", context =>
+{
+    context.Response.StatusCode = StatusCodes.Status404NotFound;
+    return Task.CompletedTask;
+});
+
 app.MapFallbackToFile("/index.html");
 
 app.Run();

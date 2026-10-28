@@ -1,6 +1,7 @@
 **/.classpath
 **/.dockerignore
 **/.env
+**/.env.*
 **/.git
 **/.gitignore
 **/.project
@@ -19,6 +20,8 @@
 **/node_modules
 **/npm-debug.log
 **/obj
+**/dist
+**/App_Data
 **/secrets.dev.yaml
 **/values.dev.yaml
 LICENSE
