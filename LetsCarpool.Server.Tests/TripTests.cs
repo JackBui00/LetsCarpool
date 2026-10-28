@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json;
 using LetsCarpool.Server.Carpooling;
 using LetsCarpool.Server.Trips;
 using Microsoft.Extensions.Configuration;
@@ -98,12 +99,11 @@ internal static class TripTests
             ExpectedRevision = revision,
             Name = "Rider A updated",
             Origin = fixture.Location(0, .055),
-            CanMeet = true,
-            LocationDisclosureAccepted = true
+            CanMeet = true
         }, CancellationToken.None).GetAwaiter().GetResult();
         Equal(revision + 1, update.Revision);
         var organizerView = fixture.Service.GetOrganizerAsync(trip.TripId, trip.OrganizerCapability, CancellationToken.None).GetAwaiter().GetResult();
-        True(organizerView.Plan is null && organizerView.PlanStale);
+        True(organizerView.CurrentPlan is null && organizerView.PlanStale);
         ThrowsStatus(409, () => fixture.Service.SelectPlanAsync(trip.TripId, generated.PlanId, trip.OrganizerCapability, revision, "rendezvous", CancellationToken.None).GetAwaiter().GetResult());
         var refreshedGuest = fixture.Service.GetParticipantAsync(trip.TripId, riderA.ParticipantCapability, CancellationToken.None).GetAwaiter().GetResult();
         True(refreshedGuest.Assignment is null && refreshedGuest.PlanStale);
@@ -118,9 +118,9 @@ internal static class TripTests
             Destination = fixture.Location(0, .25, "Updated destination")
         }, CancellationToken.None).GetAwaiter().GetResult();
         Equal(current.Revision + 1, destinationUpdate.Revision);
-        True(destinationUpdate.Plan is null && destinationUpdate.PlanStale);
+        True(destinationUpdate.CurrentPlan is null && destinationUpdate.PlanStale);
         ThrowsStatus(404, () => fixture.Service.GetOrganizerAsync(trip.TripId, driver.ParticipantCapability, CancellationToken.None).GetAwaiter().GetResult());
-        Equal(riderB.ParticipantId, fixture.Service.GetParticipantAsync(trip.TripId, riderB.ParticipantCapability, CancellationToken.None).GetAwaiter().GetResult().Self.Id);
+        Equal(riderB.ParticipantId, fixture.Service.GetParticipantAsync(trip.TripId, riderB.ParticipantCapability, CancellationToken.None).GetAwaiter().GetResult().Profile.Id);
     }
 
     public static void TripAndJoinValidation()
@@ -153,6 +153,42 @@ internal static class TripTests
         True(joinErrors.Any(error => error.MemberNames.Contains("locationDisclosureAccepted")));
     }
 
+    public static void ResponseShapeSerialization()
+    {
+        using var fixture = new Fixture();
+        var trip = fixture.Service.CreateAsync(fixture.CreateRequest(), CancellationToken.None).GetAwaiter().GetResult();
+        var driver = fixture.Service.JoinAsync(trip.TripId, trip.InviteCapability, Guid.NewGuid().ToString(), fixture.JoinRequest("Driver", canDrive: true, seats: 1, longitude: 0), CancellationToken.None).GetAwaiter().GetResult();
+        var rider = fixture.Service.JoinAsync(trip.TripId, trip.InviteCapability, Guid.NewGuid().ToString(), fixture.JoinRequest("Rider", longitude: .05), CancellationToken.None).GetAwaiter().GetResult();
+        var generated = fixture.Service.GeneratePlanAsync(trip.TripId, trip.OrganizerCapability, rider.Revision, CancellationToken.None).GetAwaiter().GetResult();
+        fixture.Service.SelectPlanAsync(trip.TripId, generated.PlanId, trip.OrganizerCapability, rider.Revision, "rendezvous", CancellationToken.None).GetAwaiter().GetResult();
+
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        var organizerJson = JsonSerializer.Serialize(fixture.Service.GetOrganizerAsync(trip.TripId, trip.OrganizerCapability, CancellationToken.None).GetAwaiter().GetResult(), options);
+        using var organizer = JsonDocument.Parse(organizerJson);
+        var root = organizer.RootElement;
+        True(root.TryGetProperty("inviteExpiresAt", out _));
+        True(root.TryGetProperty("selectedStrategy", out var selected) && selected.GetString() == "rendezvous");
+        True(!root.TryGetProperty("currentPlanId", out _));
+        var currentPlan = root.GetProperty("currentPlan");
+        True(currentPlan.TryGetProperty("planId", out _));
+        Equal(rider.Revision, currentPlan.GetProperty("basedOnRevision").GetInt64());
+        True(currentPlan.GetProperty("plan").GetProperty("alternatives").GetArrayLength() > 0);
+
+        var guestJson = JsonSerializer.Serialize(fixture.Service.GetParticipantAsync(trip.TripId, rider.ParticipantCapability, CancellationToken.None).GetAwaiter().GetResult(), options);
+        using var guest = JsonDocument.Parse(guestJson);
+        var guestRoot = guest.RootElement;
+        True(guestRoot.TryGetProperty("profile", out var profile));
+        Equal("Rider", profile.GetProperty("name").GetString());
+        True(!guestRoot.TryGetProperty("self", out _));
+        var assignment = guestRoot.GetProperty("assignment");
+        True(assignment.GetProperty("totalDistanceMeters").GetDouble() > 0);
+        True(assignment.GetProperty("durationMinutes").GetDouble() > 0);
+        Equal(rider.ParticipantId, assignment.GetProperty("ownIndependentTravelLeg").GetProperty("participantId").GetString());
+        True(assignment.GetProperty("independentTravelDistanceMeters").GetDouble() >= 0);
+        True(Math.Abs(assignment.GetProperty("vehicleDistanceMeters").GetDouble() + assignment.GetProperty("independentTravelDistanceMeters").GetDouble() - assignment.GetProperty("totalDistanceMeters").GetDouble()) <= 1e-6);
+        True(driver.ParticipantId != rider.ParticipantId);
+    }
+
     public static void GenerationRevisionRace()
     {
         using var fixture = new Fixture();
@@ -168,8 +204,7 @@ internal static class TripTests
             Name = "Updated driver",
             Origin = fixture.Location(0, .01),
             CanDrive = true,
-            PassengerSeats = 0,
-            LocationDisclosureAccepted = true
+            PassengerSeats = 0
         }, CancellationToken.None).GetAwaiter().GetResult();
         Equal(driver.Revision + 1, updated.Revision);
         blocking.Release.Set();

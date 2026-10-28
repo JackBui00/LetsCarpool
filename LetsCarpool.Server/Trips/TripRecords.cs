@@ -48,6 +48,7 @@ internal sealed class StoredParticipant
     public int PassengerSeats { get; set; }
     public bool CanMeet { get; set; }
     public double MaxDetourMinutes { get; set; }
+    public bool LocationDisclosureAccepted { get; set; }
     public DateTimeOffset JoinedAt { get; set; }
 }
 

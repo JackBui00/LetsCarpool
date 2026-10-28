@@ -91,6 +91,7 @@ public sealed class TripService
                 PassengerSeats = request.PassengerSeats,
                 CanMeet = request.CanMeet,
                 MaxDetourMinutes = request.MaxDetourMinutes,
+                LocationDisclosureAccepted = request.LocationDisclosureAccepted,
                 JoinedAt = now
             });
             trip.Capabilities.Add(CreateCapability(participantSecret, "participant", participantId, trip.ArrivalAt.Add(ParticipantAccessLifetime)));
@@ -149,6 +150,7 @@ public sealed class TripService
             {
                 var assignment = new ParticipantAssignment(trip.CurrentPlan.SelectedStrategy,
                     group.Driver.Id == participant.Id ? "driver" : "rider", group.Driver, group.Riders, group.Stops,
+                    group.TotalDistanceMeters, group.VehicleDistanceMeters, group.IndependentTravelDistanceMeters, group.DurationMinutes,
                     group.IndependentTravelLegs.SingleOrDefault(leg => leg.ParticipantId == participant.Id));
                 return new ParticipantTripView(trip.Id, trip.Name, trip.ArrivalAt, trip.TimeZoneId, trip.Destination, trip.Revision, self, assignment, null, false);
             }
@@ -165,12 +167,15 @@ public sealed class TripService
             var participant = trip.Participants.SingleOrDefault(person => person.Id == capability.ParticipantId)
                 ?? throw AccessUnavailable();
             if (string.IsNullOrWhiteSpace(request.Name)) throw Validation("name", "Name is required.");
+            if (!participant.LocationDisclosureAccepted && request.LocationDisclosureAccepted != true)
+                throw Validation("locationDisclosureAccepted", "Accept the location-sharing disclosure before saving this profile.");
             participant.Name = request.Name.Trim();
             participant.Origin = request.Origin;
             participant.CanDrive = request.CanDrive;
             participant.PassengerSeats = request.PassengerSeats;
             participant.CanMeet = request.CanMeet;
             participant.MaxDetourMinutes = request.MaxDetourMinutes;
+            if (request.LocationDisclosureAccepted == true) participant.LocationDisclosureAccepted = true;
             InvalidatePlan(trip);
             return new CurrentRevisionResponse(trip.Revision);
         }, cancellationToken);
@@ -279,9 +284,10 @@ public sealed class TripService
         }, cancellationToken);
 
     private static OrganizerTripView ToOrganizerView(StoredTrip trip) => new(
-        trip.Id, trip.Name, trip.ArrivalAt, trip.TimeZoneId, trip.Destination, trip.Revision,
-        trip.Participants.Select(ToParticipantView).ToArray(), trip.CurrentPlan?.Id, trip.CurrentPlan?.BasedOnRevision,
-        trip.CurrentPlan?.SelectedStrategy, trip.CurrentPlan?.Result, trip.PlanStale);
+        trip.Id, trip.Name, trip.ArrivalAt, trip.TimeZoneId, trip.Destination, trip.InviteExpiresAt, trip.Revision,
+        trip.Participants.Select(ToParticipantView).ToArray(), trip.CurrentPlan?.SelectedStrategy,
+        trip.CurrentPlan is null ? null : new GeneratedTripPlanView(trip.CurrentPlan.Id, trip.CurrentPlan.BasedOnRevision, trip.CurrentPlan.Result),
+        trip.PlanStale);
 
     private static TripParticipantView ToParticipantView(StoredParticipant participant) => new(
         participant.Id, participant.Name, participant.Origin, participant.CanDrive, participant.PassengerSeats,

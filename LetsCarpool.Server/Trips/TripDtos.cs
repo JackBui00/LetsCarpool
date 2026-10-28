@@ -74,7 +74,7 @@ public sealed class UpdateParticipantRequest : IValidatableObject
     public int PassengerSeats { get; init; }
     public bool CanMeet { get; init; }
     public double MaxDetourMinutes { get; init; } = 30;
-    public bool LocationDisclosureAccepted { get; init; }
+    public bool? LocationDisclosureAccepted { get; init; }
 
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
@@ -86,8 +86,8 @@ public sealed class UpdateParticipantRequest : IValidatableObject
             yield return new ValidationResult("Passenger seats can only be offered when canDrive is true.", ["passengerSeats"]);
         if (!double.IsFinite(MaxDetourMinutes) || MaxDetourMinutes is < 0 or > 1440)
             yield return new ValidationResult("Maximum detour must be between 0 and 1440 minutes.", ["maxDetourMinutes"]);
-        if (!LocationDisclosureAccepted)
-            yield return new ValidationResult("Confirm the location-sharing notice before saving.", ["locationDisclosureAccepted"]);
+        if (LocationDisclosureAccepted == false)
+            yield return new ValidationResult("A previously accepted location-sharing disclosure cannot be withdrawn as part of a profile edit.", ["locationDisclosureAccepted"]);
         foreach (var error in PlanValidation.ValidateLocation(Origin, "origin")) yield return error;
     }
 }
@@ -108,9 +108,10 @@ public sealed record CreateTripResponse(string TripId, long Revision, string Org
 public sealed record JoinTripResponse(string ParticipantId, string ParticipantCapability, long Revision);
 public sealed record InviteTripView(string TripId, string Name, DateTimeOffset ArrivalAt, string TimeZoneId, PlanLocation Destination, DateTimeOffset InviteExpiresAt);
 public sealed record TripParticipantView(string Id, string Name, PlanLocation Origin, bool CanDrive, int PassengerSeats, bool CanMeet, double MaxDetourMinutes, DateTimeOffset JoinedAt);
-public sealed record OrganizerTripView(string TripId, string Name, DateTimeOffset ArrivalAt, string TimeZoneId, PlanLocation Destination, long Revision, IReadOnlyList<TripParticipantView> Participants, string? CurrentPlanId, long? PlanBasedOnRevision, string? SelectedStrategy, CarpoolPlanResponse? Plan, bool PlanStale);
-public sealed record ParticipantAssignment(string Strategy, string Role, PersonSummary Driver, IReadOnlyList<PersonSummary> Riders, IReadOnlyList<PlanStop> Stops, IndependentTravelLeg? OwnIndependentTravelLeg);
-public sealed record ParticipantTripView(string TripId, string Name, DateTimeOffset ArrivalAt, string TimeZoneId, PlanLocation Destination, long Revision, TripParticipantView Self, ParticipantAssignment? Assignment, string? UnassignedReason, bool PlanStale);
+public sealed record OrganizerTripView(string TripId, string Name, DateTimeOffset ArrivalAt, string TimeZoneId, PlanLocation Destination, DateTimeOffset InviteExpiresAt, long Revision, IReadOnlyList<TripParticipantView> Participants, string? SelectedStrategy, GeneratedTripPlanView? CurrentPlan, bool PlanStale);
+public sealed record GeneratedTripPlanView(string PlanId, long BasedOnRevision, CarpoolPlanResponse Plan);
+public sealed record ParticipantAssignment(string Strategy, string Role, PersonSummary Driver, IReadOnlyList<PersonSummary> Riders, IReadOnlyList<PlanStop> Stops, double TotalDistanceMeters, double VehicleDistanceMeters, double IndependentTravelDistanceMeters, double DurationMinutes, IndependentTravelLeg? OwnIndependentTravelLeg);
+public sealed record ParticipantTripView(string TripId, string Name, DateTimeOffset ArrivalAt, string TimeZoneId, PlanLocation Destination, long Revision, TripParticipantView Profile, ParticipantAssignment? Assignment, string? UnassignedReason, bool PlanStale);
 public sealed record GenerateTripPlanResponse(string PlanId, long BasedOnRevision, CarpoolPlanResponse Plan);
 public sealed record CurrentRevisionResponse(long Revision);
 

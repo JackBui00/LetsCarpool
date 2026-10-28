@@ -18,6 +18,7 @@ var checks = new (string Name, Action Run)[]
     ("join idempotency and concurrent capacity", TripTests.JoinIdempotencyAndCapacity),
     ("trip plan revision invalidation and private assignment", TripTests.PlanRevisionAndPrivateAssignment),
     ("trip and join request validation", TripTests.TripAndJoinValidation),
+    ("trip API response shape serialization", TripTests.ResponseShapeSerialization),
     ("revision race during plan generation", TripTests.GenerationRevisionRace)
 };
 
