@@ -12,8 +12,15 @@ builder.Services.AddControllers().AddJsonOptions(options => TripJson.Configure(o
 builder.Services.AddSingleton<IDistanceProvider, HaversineDistanceProvider>();
 builder.Services.AddSingleton<CarpoolPlanner>();
 builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
-builder.Services.AddSingleton<JsonTripStore>();
-builder.Services.AddSingleton<ITripStore>(services => services.GetRequiredService<JsonTripStore>());
+var tripStoreProvider = TripStoreProviderSelection.Parse(builder.Configuration["CarpoolStore:Provider"]);
+if (tripStoreProvider == TripStoreProvider.SqlServer)
+    SqlTripStore.ValidateConfiguration(builder.Configuration);
+builder.Services.AddSingleton<ITripStore>(services => tripStoreProvider switch
+{
+    TripStoreProvider.Json => ActivatorUtilities.CreateInstance<JsonTripStore>(services),
+    TripStoreProvider.SqlServer => ActivatorUtilities.CreateInstance<SqlTripStore>(services),
+    _ => throw new InvalidOperationException("The configured trip store provider is not supported.")
+});
 builder.Services.AddSingleton(services => new TripService(
     services.GetRequiredService<ITripStore>(), services.GetRequiredService<CarpoolPlanner>(),
     services.GetRequiredService<IConfiguration>(), services.GetRequiredService<TimeProvider>()));

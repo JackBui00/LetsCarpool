@@ -23,7 +23,8 @@ var checks = new (string Name, Action Run)[]
     ("legacy trip store fails closed without mutation", TripTests.LegacyStoreFailsClosed),
     ("temporary provider results are never loaded from persistence", TripTests.TemporaryStoreLocationsFailClosed),
     ("trip API response shape serialization", TripTests.ResponseShapeSerialization),
-    ("revision race during plan generation", TripTests.GenerationRevisionRace)
+    ("revision race during plan generation", TripTests.GenerationRevisionRace),
+    ("trip store provider selection and SQL configuration", SqlTripStoreTests.ProviderSelectionAndConfiguration)
 };
 
 foreach (var (name, run) in checks)
@@ -32,6 +33,10 @@ foreach (var (name, run) in checks)
     Console.WriteLine($"PASS {name}");
 }
 Console.WriteLine($"Passed {checks.Length} focused planner checks.");
+if (SqlTripStoreTests.RunLocalIntegrationIfConfigured())
+    Console.WriteLine("PASS Azure SQL store behavior against explicitly configured disposable local SQL database.");
+else
+    Console.WriteLine("SKIP SQL integration: set LETS_CARPOOL_TEST_SQL_CONNECTION only for an initialized unique local disposable test database.");
 
 static void CapacityAndCoverage()
 {

@@ -41,7 +41,7 @@ internal sealed class JsonTripStore : ITripStore
         }
     }
 
-    private static JsonSerializerOptions CreateJsonOptions()
+    internal static JsonSerializerOptions CreateJsonOptions()
     {
         var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
         TripJson.Configure(options);
