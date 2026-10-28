@@ -91,7 +91,7 @@ jobs:
           if ! test_output="$(
             LETS_CARPOOL_RUN_SQL_INTEGRATION=true \
             LETS_CARPOOL_TEST_SQL_CONNECTION="Server=localhost,1433;Initial Catalog=$database;Encrypt=True;TrustServerCertificate=True;User ID=sa;Password=$SQL_CI_PASSWORD;Connect Timeout=15;Pooling=False" \
-            dotnet run --project LetsCarpool.Server.Tests/LetsCarpool.Server.Tests.csproj --configuration Release --no-build 2>&1
+            dotnet run --project LetsCarpool.Server.Tests/LetsCarpool.Server.Tests.csproj --configuration Release --no-build --no-restore 2>&1
           )"; then
             printf '%s\n' "$test_output"
             exit 1
