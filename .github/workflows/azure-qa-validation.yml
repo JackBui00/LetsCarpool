@@ -116,6 +116,7 @@ jobs:
           url="https://$APP_HOSTNAME/"
           for attempt in $(seq 1 12); do
             if python - "$url" <<'PY'
+          import re
           from urllib.error import HTTPError, URLError
           from urllib.parse import urlparse
           from urllib.request import urlopen
@@ -128,7 +129,10 @@ jobs:
                   parsed_expected = urlparse(expected_url)
                   parsed_actual = urlparse(response.geturl())
                   valid_target = parsed_actual.scheme == "https" and parsed_actual.hostname == parsed_expected.hostname
-                  valid_body = len(body) <= 65536 and b"<title>Gather \xc2\xb7 Plan a ride together</title>" in body
+                  has_title = b"<title>Gather \xc2\xb7 Plan a ride together</title>" in body
+                  has_root = b"<div id=root></div>" in body
+                  has_app_bundle = re.search(rb'<script\b[^>]*\bsrc="/assets/index-[^" ]+\.js"', body) is not None
+                  valid_body = len(body) <= 65536 and has_title and has_root and has_app_bundle
                   if response.status == 200 and valid_target and valid_body:
                       sys.exit(0)
           except (HTTPError, URLError, TimeoutError, OSError):
@@ -136,10 +140,10 @@ jobs:
           sys.exit(1)
           PY
             then
-              echo "QA smoke GET / returned HTTP 200 with the expected app title marker."
+              echo "QA smoke GET / returned HTTP 200 with the expected app title, root, and bundle markers."
               exit 0
             fi
             sleep 10
           done
-          echo "QA smoke GET / did not return HTTP 200 with the expected app title marker after the deployment window." >&2
+          echo "QA smoke GET / did not return HTTP 200 with the expected app title, root, and bundle markers after the deployment window." >&2
           exit 1
