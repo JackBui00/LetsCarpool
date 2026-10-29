@@ -115,12 +115,31 @@ jobs:
           set -euo pipefail
           url="https://$APP_HOSTNAME/"
           for attempt in $(seq 1 12); do
-            status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --max-time 15 "$url" || true)"
-            if [[ "$status" == "200" ]]; then
-              echo "QA smoke GET / returned HTTP 200."
+            if python - "$url" <<'PY'
+          from urllib.error import HTTPError, URLError
+          from urllib.parse import urlparse
+          from urllib.request import urlopen
+          import sys
+
+          expected_url = sys.argv[1]
+          try:
+              with urlopen(expected_url, timeout=15) as response:
+                  body = response.read(65537)
+                  parsed_expected = urlparse(expected_url)
+                  parsed_actual = urlparse(response.geturl())
+                  valid_target = parsed_actual.scheme == "https" and parsed_actual.hostname == parsed_expected.hostname
+                  valid_body = len(body) <= 65536 and b"<title>Gather \xc2\xb7 Plan a ride together</title>" in body
+                  if response.status == 200 and valid_target and valid_body:
+                      sys.exit(0)
+          except (HTTPError, URLError, TimeoutError, OSError):
+              pass
+          sys.exit(1)
+          PY
+            then
+              echo "QA smoke GET / returned HTTP 200 with the expected app title marker."
               exit 0
             fi
             sleep 10
           done
-          echo "QA smoke GET / did not return HTTP 200 after the deployment window." >&2
+          echo "QA smoke GET / did not return HTTP 200 with the expected app title marker after the deployment window." >&2
           exit 1
