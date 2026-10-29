@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.ComponentModel.DataAnnotations;
 using LetsCarpool.Server.Carpooling;
 using LetsCarpool.Server.Trips;
@@ -23,15 +24,43 @@ var checks = new (string Name, Action Run)[]
     ("legacy trip store fails closed without mutation", TripTests.LegacyStoreFailsClosed),
     ("temporary provider results are never loaded from persistence", TripTests.TemporaryStoreLocationsFailClosed),
     ("trip API response shape serialization", TripTests.ResponseShapeSerialization),
-    ("revision race during plan generation", TripTests.GenerationRevisionRace)
+    ("revision race during plan generation", TripTests.GenerationRevisionRace),
+    ("trip store provider selection and SQL configuration", SqlTripStoreTests.ProviderSelectionAndConfiguration)
 };
 
-foreach (var (name, run) in checks)
+try
 {
-    run();
-    Console.WriteLine($"PASS {name}");
+    foreach (var (name, run) in checks)
+    {
+        run();
+        Console.WriteLine($"PASS {name}");
+    }
+    Console.WriteLine($"Passed {checks.Length} focused planner checks.");
+    Console.WriteLine($"FOCUSED_TESTS_PASSED={checks.Length}");
 }
-Console.WriteLine($"Passed {checks.Length} focused planner checks.");
+catch (Exception exception)
+{
+    Console.Error.WriteLine($"FOCUSED_TEST_RESULT=FAIL; types={SafeExceptionTypes(exception)}; frames={SafeFrameIdentifiers(exception)}");
+    Environment.ExitCode = 1;
+    return;
+}
+try
+{
+    var sqlIntegration = SqlTripStoreTests.RunLocalIntegrationFromEnvironment();
+    if (sqlIntegration.Executed)
+    {
+        Console.WriteLine($"SQL_INTEGRATION_RESULT=PASS; cases=1; assertions={sqlIntegration.Assertions}");
+        Console.WriteLine($"SQL_INTEGRATION_SCENARIOS={string.Join(",", sqlIntegration.Scenarios)}");
+    }
+    else
+        Console.WriteLine("SQL_INTEGRATION_RESULT=SKIP; reason=explicit_opt_in_not_set");
+}
+catch (Exception exception)
+{
+    Console.Error.WriteLine($"SQL_INTEGRATION_RESULT=FAIL; reason={exception.GetType().Name}");
+    Environment.ExitCode = 1;
+}
+Console.WriteLine("SQL_PROCESS_RESTART_TESTED=false");
 
 static void CapacityAndCoverage()
 {
@@ -232,3 +261,29 @@ static PlanLocation Location(double latitude, double longitude) => new() { Label
 static void True(bool value) { if (!value) throw new InvalidOperationException("Expected condition to be true."); }
 static void Equal<T>(T expected, T actual) { if (!EqualityComparer<T>.Default.Equals(expected, actual)) throw new InvalidOperationException($"Expected {expected}; got {actual}."); }
 static void Near(double expected, double actual) { if (Math.Abs(expected - actual) > 1e-5) throw new InvalidOperationException($"Expected {expected}; got {actual}."); }
+
+static string SafeExceptionTypes(Exception exception)
+{
+    var types = new List<string>();
+    for (var current = exception; current is not null && types.Count < 5; current = current.InnerException)
+        types.Add(SafeExceptionType(current.GetType().FullName ?? current.GetType().Name));
+    return string.Join(">", types);
+}
+
+static string SafeFrameIdentifiers(Exception exception)
+{
+    var frames = new StackTrace(exception, fNeedFileInfo: false).GetFrames() ?? Array.Empty<StackFrame>();
+    return string.Join("|", frames
+        .Select(frame => frame.GetMethod())
+        .Where(method => method is not null)
+        .Take(5)
+        .Select(method => SafeFrameIdentifier($"{method!.DeclaringType?.FullName ?? "UnknownType"}.{method.Name}")));
+}
+
+static string SafeExceptionType(string value) => new(value
+    .Select(character => char.IsAsciiLetterOrDigit(character) || "._+$`-".Contains(character) ? character : '_')
+    .ToArray());
+
+static string SafeFrameIdentifier(string value) => new(value
+    .Select(character => char.IsAsciiLetterOrDigit(character) || "._+$`<>-".Contains(character) ? character : '_')
+    .ToArray());

@@ -1,0 +1,149 @@
+name: Manually deploy LetsCarpool QA validation
+
+on:
+  workflow_dispatch:
+    inputs:
+      ci_run_id:
+        description: Successful azure-build.yml push run ID from qa
+        required: true
+        type: string
+      expected_sha:
+        description: Exact 40-character commit SHA from that QA CI run
+        required: true
+        type: string
+      confirm_app_name:
+        description: Type letscarpool to confirm the existing App Service target
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-qa-validation:
+    if: github.ref == 'refs/heads/qa' && inputs.confirm_app_name == 'letscarpool'
+    runs-on: ubuntu-latest
+    environment: qa-validation
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+    steps:
+      - name: Check QA readiness and CI artifact provenance
+        env:
+          QA_VALIDATION_ENABLED: ${{ vars.AZURE_QA_VALIDATION_ENABLED }}
+          APP_NAME: ${{ vars.AZURE_WEBAPP_NAME }}
+          APP_HOSTNAME: ${{ vars.AZURE_WEBAPP_HOSTNAME }}
+          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          CI_RUN_ID: ${{ inputs.ci_run_id }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          CONFIRMED_APP_NAME: ${{ inputs.confirm_app_name }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [[ "$CI_RUN_ID" =~ ^[0-9]+$ ]] || { echo "ci_run_id must contain only digits." >&2; exit 1; }
+          [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "expected_sha must be a lowercase 40-character commit SHA." >&2; exit 1; }
+          test "$QA_VALIDATION_ENABLED" = "true" || { echo "QA validation remains disabled until its environment setup is complete." >&2; exit 1; }
+          test "$APP_NAME" = "letscarpool" || { echo "AZURE_WEBAPP_NAME must be letscarpool in qa-validation." >&2; exit 1; }
+          test "$APP_HOSTNAME" = "letscarpool-bucxd2amgfc5aadu.westus2-01.azurewebsites.net" || { echo "AZURE_WEBAPP_HOSTNAME does not match the approved App Service host." >&2; exit 1; }
+          test "$CONFIRMED_APP_NAME" = "$APP_NAME" || { echo "The manual target confirmation does not match AZURE_WEBAPP_NAME." >&2; exit 1; }
+          for required_variable in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID; do
+            if [[ -z "${!required_variable}" ]]; then
+              echo "Missing required qa-validation environment variable: $required_variable" >&2
+              exit 1
+            fi
+          done
+
+          run_json="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CI_RUN_ID" 2>/dev/null)" || { echo "Could not verify the selected CI run." >&2; exit 1; }
+          workflow_id="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/azure-build.yml" --jq '.id' 2>/dev/null)" || { echo "Could not verify the required CI workflow." >&2; exit 1; }
+          run_branch="$(jq -r '.head_branch // empty' <<< "$run_json")"
+          run_event="$(jq -r '.event // empty' <<< "$run_json")"
+          run_status="$(jq -r '.status // empty' <<< "$run_json")"
+          run_conclusion="$(jq -r '.conclusion // empty' <<< "$run_json")"
+          run_sha="$(jq -r '.head_sha // empty' <<< "$run_json")"
+          run_repository="$(jq -r '.head_repository.full_name // empty' <<< "$run_json")"
+          run_workflow_id="$(jq -r '.workflow_id // empty' <<< "$run_json")"
+          if [[ "$run_branch" != "qa" || "$run_event" != "push" || "$run_status" != "completed" || "$run_conclusion" != "success" || "$run_sha" != "$EXPECTED_SHA" || "$run_repository" != "$GITHUB_REPOSITORY" || "$run_workflow_id" != "$workflow_id" ]]; then
+            echo "The selected run is not a successful azure-build.yml push on qa for the confirmed commit." >&2
+            exit 1
+          fi
+
+      - uses: actions/download-artifact@v8 # Node 24; GitHub-hosted runner meets the v2.327.1 minimum.
+        with:
+          name: letscarpool-appservice
+          path: ${{ runner.temp }}/artifact
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.ci_run_id }}
+
+      - name: Validate downloaded artifact
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/artifact/letscarpool-appservice.zip"
+          if [[ ! -s "$archive" ]]; then
+            echo "Downloaded CI run is missing letscarpool-appservice.zip." >&2
+            exit 1
+          fi
+          for required_path in LetsCarpool.Server.dll LetsCarpool.Server.runtimeconfig.json wwwroot/index.html; do
+            if ! unzip -Z1 "$archive" | grep -Fqx "$required_path"; then
+              echo "Downloaded artifact is missing required path: $required_path" >&2
+              exit 1
+            fi
+          done
+          if ! unzip -Z1 "$archive" | grep -Eq '^wwwroot/assets/[^/]+$'; then
+            echo "Downloaded artifact is missing required path: wwwroot/assets/*" >&2
+            exit 1
+          fi
+
+      - uses: azure/login@v3 # This action's current v3 manifest uses Node 24.
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: azure/webapps-deploy@v3 # This action's current v3 manifest uses Node 24.
+        with:
+          app-name: ${{ vars.AZURE_WEBAPP_NAME }}
+          package: ${{ runner.temp }}/artifact/letscarpool-appservice.zip
+
+      - name: Smoke test deployed app with read-only GET
+        env:
+          APP_HOSTNAME: ${{ vars.AZURE_WEBAPP_HOSTNAME }}
+        run: |
+          set -euo pipefail
+          url="https://$APP_HOSTNAME/"
+          for attempt in $(seq 1 12); do
+            if python - "$url" <<'PY'
+          import re
+          from urllib.error import HTTPError, URLError
+          from urllib.parse import urlparse
+          from urllib.request import urlopen
+          import sys
+
+          expected_url = sys.argv[1]
+          try:
+              with urlopen(expected_url, timeout=15) as response:
+                  body = response.read(65537)
+                  parsed_expected = urlparse(expected_url)
+                  parsed_actual = urlparse(response.geturl())
+                  valid_target = parsed_actual.scheme == "https" and parsed_actual.hostname == parsed_expected.hostname
+                  has_title = b"<title>Gather \xc2\xb7 Plan a ride together</title>" in body
+                  has_root = b'<div id="root"></div>' in body
+                  has_app_bundle = re.search(rb'<script\b[^>]*\bsrc="/assets/index-[^" ]+\.js"', body) is not None
+                  valid_body = len(body) <= 65536 and has_title and has_root and has_app_bundle
+                  if response.status == 200 and valid_target and valid_body:
+                      sys.exit(0)
+          except (HTTPError, URLError, TimeoutError, OSError):
+              pass
+          sys.exit(1)
+          PY
+            then
+              echo "QA smoke GET / returned HTTP 200 with the expected app title, root, and bundle markers."
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "QA smoke GET / did not return HTTP 200 with the expected app title, root, and bundle markers after the deployment window." >&2
+          exit 1
