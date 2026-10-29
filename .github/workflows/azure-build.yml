@@ -23,13 +23,13 @@ jobs:
           MSSQL_SA_PASSWORD: ${{ format('LetCarpool_CI_{0}_{1}_Abc!9', github.run_id, github.run_attempt) }}
         options: --publish 127.0.0.1:1433:1433
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7 # Node 24; GitHub-hosted runner meets the v2.327.1 minimum.
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6 # Node 24; GitHub-hosted runner meets the v2.327.1 minimum.
         with:
           global-json-file: global.json
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7 # Node 24; GitHub-hosted runner meets the v2.327.1 minimum.
         with:
           node-version: 22
           cache: npm
@@ -89,12 +89,59 @@ jobs:
           set +x
           echo "::add-mask::$SQL_CI_PASSWORD"
           database="${LETS_CARPOOL_CI_SQL_DATABASE:?Missing unique SQL integration database.}"
+          report_safe_launch_diagnostics() {
+            local label="$1"
+            local child_exit_code="$2"
+            local output="$3"
+            local diagnostic_class=expectedmarkerabsent
+            local project_file=LetsCarpool.Server.Tests/LetsCarpool.Server.Tests.csproj
+            local project_present=no
+            local target_framework=unknown
+            local expected_assembly_present=no
+            local sdk_version=unavailable
+            local runtime_versions=none
+            if [[ ! -f "$project_file" ]]; then
+              diagnostic_class=projectmissing
+            else
+              project_present=yes
+              target_framework="$(sed -nE 's/.*<TargetFramework>([^<]+)<\/TargetFramework>.*/\1/p' "$project_file" | head -n 1)"
+              if [[ "$target_framework" =~ ^[A-Za-z0-9._-]+$ ]]; then
+                local expected_assembly="LetsCarpool.Server.Tests/bin/Release/$target_framework/LetsCarpool.Server.Tests.dll"
+                if [[ -s "$expected_assembly" ]]; then
+                  expected_assembly_present=yes
+                else
+                  diagnostic_class=assemblymissing
+                fi
+              else
+                target_framework=unknown
+              fi
+            fi
+            if grep -Eiq 'You must install or update \.NET|framework .* was not found|Microsoft\.NETCore\.App.*not found|NETSDK[0-9]+.*framework' <<< "$output"; then
+              diagnostic_class=frameworkmissing
+            elif grep -Eiq 'Project file .* does not exist|Could not find a project|No project was found|MSB1009.*Project file does not exist' <<< "$output"; then
+              diagnostic_class=projectmissing
+            elif grep -Eiq 'application to execute does not exist|Could not execute because .*\.dll|assembly .* not found|failed to load .*assembly' <<< "$output"; then
+              diagnostic_class=assemblymissing
+            elif grep -Eiq 'dotnet: command not found|failed to launch|permission denied|exec format error|A fatal error occurred' <<< "$output"; then
+              diagnostic_class=hostlaunchfailure
+            fi
+            sdk_version="$(dotnet --version 2>/dev/null || true)"
+            if [[ ! "$sdk_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]]; then
+              sdk_version=unavailable
+            fi
+            runtime_versions="$(dotnet --list-runtimes 2>/dev/null | awk '$1 == "Microsoft.NETCore.App" && $2 ~ /^[0-9.]+$/ { if (count++ < 3) print $2 }' | paste -sd ',' - || true)"
+            runtime_versions="${runtime_versions:-none}"
+            printf 'Strict SQL negative control failed: case=%s child_exit=%s diagnostic=%s\n' "$label" "$child_exit_code" "$diagnostic_class" >&2
+            printf 'Safe launch metadata: working_directory=%s project=%s project_present=%s target_framework=%s expected_assembly_present=%s sdk=%s runtimes=%s command=dotnet_run_Release_no_build_no_restore\n' \
+              "$PWD" "$project_file" "$project_present" "$target_framework" "$expected_assembly_present" "$sdk_version" "$runtime_versions" >&2
+          }
           run_expected_rejection() {
             local label="$1"
             local target="$2"
             local expected_failure="$3"
             local output
-            if output="$(
+            local child_exit_code=0
+            output="$(
               (
                 export LETS_CARPOOL_RUN_SQL_INTEGRATION=true
                 case "$target" in
@@ -117,13 +164,15 @@ jobs:
                 esac
                 dotnet run --project LetsCarpool.Server.Tests --configuration Release --no-build --no-restore
               ) 2>&1
-            )"; then
+            )" || child_exit_code=$?
+            if [[ "$child_exit_code" -eq 0 ]]; then
               echo "Strict SQL negative control unexpectedly succeeded: $label" >&2
+              report_safe_launch_diagnostics "$label" "$child_exit_code" "$output"
               return 1
             fi
             if ! grep -Fxq "$expected_failure" <<< "$output"; then
-              echo "Strict SQL negative control did not emit the sanitized FAIL marker: $label" >&2
-              return 1
+              report_safe_launch_diagnostics "$label" "$child_exit_code" "$output"
+              return "$child_exit_code"
             fi
           }
           run_expected_rejection missing-connection missing-connection 'SQL_INTEGRATION_RESULT=FAIL; reason=InvalidOperationException'
@@ -205,7 +254,7 @@ jobs:
           zip -qr "$RUNNER_TEMP/letscarpool-appservice.zip" .
           unzip -l "$RUNNER_TEMP/letscarpool-appservice.zip"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7 # Node 24; GitHub-hosted runner meets the v2.327.1 minimum.
         with:
           name: letscarpool-appservice
           path: ${{ runner.temp }}/letscarpool-appservice.zip
