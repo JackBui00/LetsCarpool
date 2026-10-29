@@ -1,10 +1,13 @@
 using LetsCarpool.Server.Carpooling;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace LetsCarpool.Server.Controllers;
 
 [ApiController]
 [Route("api/v1/carpool/plan")]
+[RequestSizeLimit(32 * 1024)]
+[EnableRateLimiting("carpool-plan")]
 public sealed class CarpoolPlanController(CarpoolPlanner planner) : ControllerBase
 {
     [HttpPost]

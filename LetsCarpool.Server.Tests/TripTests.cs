@@ -1,5 +1,8 @@
 using System.Collections.Concurrent;
 using System.ComponentModel.DataAnnotations;
+using System.Diagnostics;
+using System.Net;
+using System.Net.Sockets;
 using System.Text.Json;
 using LetsCarpool.Server.Carpooling;
 using LetsCarpool.Server.Trips;
@@ -289,6 +292,228 @@ internal static class TripTests
         {
             if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
         }
+    }
+
+    public static void JsonStoreDirectoryPermissions()
+    {
+        if (OperatingSystem.IsWindows()) return;
+
+        var root = Directory.CreateTempSubdirectory("letscarpool-permissions-");
+        FileSystemInfo? link = null;
+        FileSystemInfo? fileLink = null;
+        var sharedRoot = Directory.CreateTempSubdirectory("letscarpool-shared-permissions-");
+        var publicRoot = Directory.CreateTempSubdirectory("letscarpool-public-permissions-");
+        try
+        {
+            var originalMode = File.GetUnixFileMode(root.FullName);
+            var existingDirectoryStore = new JsonTripStore(Path.Combine(root.FullName, "trips.json"));
+            Equal(originalMode, File.GetUnixFileMode(root.FullName));
+            existingDirectoryStore.MutateAsync(database => database.Trips.Count, CancellationToken.None).GetAwaiter().GetResult();
+            Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(Path.Combine(root.FullName, "trips.json")));
+
+            var privateDirectory = Path.Combine(root.FullName, "new-store");
+            var privateDirectoryStore = new JsonTripStore(Path.Combine(privateDirectory, "trips.json"));
+            Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute,
+                File.GetUnixFileMode(privateDirectory));
+            Equal(originalMode, File.GetUnixFileMode(root.FullName));
+            privateDirectoryStore.MutateAsync(database => database.Trips.Count, CancellationToken.None).GetAwaiter().GetResult();
+            Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(Path.Combine(privateDirectory, "trips.json")));
+
+            const string schemaTwo = "{\"schemaVersion\":2,\"trips\":[]}";
+            var exposedFilePath = Path.Combine(root.FullName, "exposed-trips.json");
+            File.WriteAllText(exposedFilePath, schemaTwo);
+            var exposedFileMode = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead;
+            File.SetUnixFileMode(exposedFilePath, exposedFileMode);
+            Throws<InvalidOperationException>(() => new JsonTripStore(exposedFilePath));
+            Equal(exposedFileMode, File.GetUnixFileMode(exposedFilePath));
+            Equal(schemaTwo, File.ReadAllText(exposedFilePath));
+
+            var fileLinkTarget = Path.Combine(root.FullName, "trusted-target.json");
+            File.WriteAllText(fileLinkTarget, schemaTwo);
+            var fileLinkTargetMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+            File.SetUnixFileMode(fileLinkTarget, fileLinkTargetMode);
+            fileLink = File.CreateSymbolicLink(Path.Combine(root.FullName, "store-file-link.json"), fileLinkTarget);
+            Throws<InvalidOperationException>(() => new JsonTripStore(fileLink.FullName));
+            Equal(fileLinkTargetMode, File.GetUnixFileMode(fileLinkTarget));
+            Equal(schemaTwo, File.ReadAllText(fileLinkTarget));
+            True(new FileInfo(fileLink.FullName).LinkTarget is not null);
+
+            var sharedMode = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+                UnixFileMode.GroupRead | UnixFileMode.GroupWrite | UnixFileMode.GroupExecute |
+                UnixFileMode.OtherRead | UnixFileMode.OtherWrite | UnixFileMode.OtherExecute;
+            File.SetUnixFileMode(sharedRoot.FullName, sharedMode);
+            Throws<InvalidOperationException>(() => new JsonTripStore(Path.Combine(sharedRoot.FullName, "trips.json")));
+            Equal(sharedMode, File.GetUnixFileMode(sharedRoot.FullName));
+            var nestedStoreDirectory = Path.Combine(sharedRoot.FullName, "new-store");
+            Throws<InvalidOperationException>(() => new JsonTripStore(Path.Combine(nestedStoreDirectory, "trips.json")));
+            True(!Directory.Exists(nestedStoreDirectory));
+            Equal(sharedMode, File.GetUnixFileMode(sharedRoot.FullName));
+
+            const string attackerControlledLegacy = "{\"schemaVersion\":1,\"trips\":[]}";
+            var attackerControlledPath = Path.Combine(publicRoot.FullName, "trips.json");
+            File.WriteAllText(attackerControlledPath, attackerControlledLegacy);
+            File.SetUnixFileMode(attackerControlledPath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            var publicMode = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+                UnixFileMode.GroupRead | UnixFileMode.GroupExecute | UnixFileMode.OtherRead | UnixFileMode.OtherExecute;
+            File.SetUnixFileMode(publicRoot.FullName, publicMode);
+            Throws<InvalidOperationException>(() => new JsonTripStore(attackerControlledPath));
+            Equal(publicMode, File.GetUnixFileMode(publicRoot.FullName));
+            Equal(attackerControlledLegacy, File.ReadAllText(attackerControlledPath));
+            Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(attackerControlledPath));
+
+            var privateDirectoryMode = File.GetUnixFileMode(privateDirectory);
+            link = Directory.CreateSymbolicLink(Path.Combine(root.FullName, "store-link"), privateDirectory);
+            Throws<InvalidOperationException>(() => new JsonTripStore(Path.Combine(link.FullName, "trips.json")));
+            Equal(privateDirectoryMode, File.GetUnixFileMode(privateDirectory));
+            True(new DirectoryInfo(link.FullName).LinkTarget is not null);
+        }
+        finally
+        {
+            if (link is not null) Directory.Delete(link.FullName);
+            if (fileLink is not null) File.Delete(fileLink.FullName);
+            Directory.Delete(root.FullName, recursive: true);
+            Directory.Delete(sharedRoot.FullName, recursive: true);
+            Directory.Delete(publicRoot.FullName, recursive: true);
+        }
+    }
+
+    public static void PublicApiHttpSecurityAndLimits()
+    {
+        var serverAssembly = Path.Combine(AppContext.BaseDirectory, "LetsCarpool.Server.dll");
+        True(File.Exists(serverAssembly));
+
+        var root = Directory.CreateTempSubdirectory("letscarpool-http-security-");
+        using var portReservation = new TcpListener(IPAddress.Loopback, 0);
+        portReservation.Start();
+        var port = ((IPEndPoint)portReservation.LocalEndpoint).Port;
+        portReservation.Stop();
+
+        var startInfo = new ProcessStartInfo("dotnet")
+        {
+            WorkingDirectory = AppContext.BaseDirectory,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+        startInfo.ArgumentList.Add(serverAssembly);
+        startInfo.Environment["ASPNETCORE_ENVIRONMENT"] = "Production";
+        startInfo.Environment["ASPNETCORE_URLS"] = $"http://127.0.0.1:{port}";
+        startInfo.Environment["ASPNETCORE_HTTPS_PORT"] = string.Empty;
+        startInfo.Environment["HTTPS_PORT"] = string.Empty;
+        startInfo.Environment["CarpoolStore__Provider"] = "Json";
+        startInfo.Environment["CarpoolStore__FilePath"] = Path.Combine(root.FullName, "store", "trips.json");
+        startInfo.Environment["ConnectionStrings__DefaultConnection"] = "Server=127.0.0.1;Database=LetCarpoolNeverConnect;Connect Timeout=1;TrustServerCertificate=True";
+
+        using var process = Process.Start(startInfo) ?? throw new InvalidOperationException("The local API test host could not be started.");
+        var childExceptionTypes = new List<string>();
+        process.OutputDataReceived += (_, _) => { };
+        process.ErrorDataReceived += (_, eventArgs) =>
+        {
+            if (eventArgs.Data is not { } line) return;
+            var prefix = line.StartsWith("Unhandled exception. ", StringComparison.Ordinal)
+                ? "Unhandled exception. "
+                : line.StartsWith(" ---> ", StringComparison.Ordinal) ? " ---> " : null;
+            if (prefix is null || childExceptionTypes.Count >= 5) return;
+            var exceptionName = line[prefix.Length..];
+            var end = exceptionName.IndexOfAny([':', ' ', '\t']);
+            childExceptionTypes.Add(end < 0 ? exceptionName : exceptionName[..end]);
+        };
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
+
+        try
+        {
+            using var handler = new HttpClientHandler { AllowAutoRedirect = false };
+            using var client = new HttpClient(handler) { BaseAddress = new Uri($"http://127.0.0.1:{port}"), Timeout = TimeSpan.FromSeconds(3) };
+            var ready = false;
+            var deadline = DateTime.UtcNow.AddSeconds(15);
+            while (!ready && DateTime.UtcNow < deadline && !process.HasExited)
+            {
+                try
+                {
+                    using var response = client.GetAsync("/api/readiness-probe").GetAwaiter().GetResult();
+                    ready = true;
+                }
+                catch (HttpRequestException)
+                {
+                    Thread.Sleep(100);
+                }
+            }
+            Console.WriteLine($"HTTP_SECURITY_STAGE=host-ready; ready={ready}; exited={process.HasExited}; exitcode={(process.HasExited ? process.ExitCode : 0)}; exceptionTypes={string.Join(">", childExceptionTypes)}");
+            True(ready);
+
+            var sentinel = "private-user-test-sentinel";
+            var userPayload = $"{{\"userId\":1,\"email\":\"{sentinel}@example.invalid\",\"passwordHash\":\"{sentinel}\",\"address\":\"{sentinel}\"}}";
+            var userRequests = new[]
+            {
+                new HttpRequestMessage(HttpMethod.Get, "/api/User"),
+                new HttpRequestMessage(HttpMethod.Get, "/api/User/1"),
+                new HttpRequestMessage(HttpMethod.Post, "/api/User") { Content = JsonContent(userPayload) },
+                new HttpRequestMessage(HttpMethod.Put, "/api/User/1") { Content = JsonContent(userPayload) },
+                new HttpRequestMessage(HttpMethod.Delete, "/api/User/1")
+            };
+            foreach (var request in userRequests)
+            {
+                using (request)
+                using (var response = client.SendAsync(request).GetAwaiter().GetResult())
+                {
+                    Equal(HttpStatusCode.NotFound, response.StatusCode);
+                    var body = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+                    True(!body.Contains("passwordHash", StringComparison.OrdinalIgnoreCase));
+                    True(!body.Contains("email", StringComparison.OrdinalIgnoreCase));
+                    True(!body.Contains("address", StringComparison.OrdinalIgnoreCase));
+                    True(!body.Contains(sentinel, StringComparison.Ordinal));
+                }
+            }
+            Console.WriteLine("HTTP_SECURITY_STAGE=user-routes-404; passed=5");
+
+            using (var response = client.GetAsync("/api/v1/trips/missing-trip/invite").GetAwaiter().GetResult())
+            {
+                Console.WriteLine($"HTTP_SECURITY_STAGE=trip-capability-route; status={(int)response.StatusCode}");
+                Equal(HttpStatusCode.NotFound, response.StatusCode);
+            }
+
+            const string planPayload = "{\"destination\":{\"label\":\"Event\",\"latitude\":37.77,\"longitude\":-122.42},\"participants\":[{\"id\":\"rider\",\"name\":\"Rider\",\"origin\":{\"label\":\"Home\",\"latitude\":37.76,\"longitude\":-122.43},\"passengerSeats\":0,\"canMeet\":true}]}";
+            using (var response = client.PostAsync("/api/v1/carpool/plan", JsonContent(planPayload)).GetAwaiter().GetResult())
+            {
+                Console.WriteLine($"HTTP_SECURITY_STAGE=planner-valid; status={(int)response.StatusCode}");
+                Equal(HttpStatusCode.OK, response.StatusCode);
+            }
+
+            using (var response = client.PostAsync("/api/v1/carpool/plan", JsonContent(planPayload + new string(' ', 33 * 1024))).GetAwaiter().GetResult())
+            {
+                Console.WriteLine($"HTTP_SECURITY_STAGE=planner-oversize; status={(int)response.StatusCode}");
+                Equal(HttpStatusCode.RequestEntityTooLarge, response.StatusCode);
+            }
+
+            var rateLimited = false;
+            var acceptedPlans = 0;
+            for (var index = 0; index < 12 && !rateLimited; index++)
+            {
+                using var response = client.PostAsync("/api/v1/carpool/plan", JsonContent(planPayload)).GetAwaiter().GetResult();
+                if (response.StatusCode == HttpStatusCode.OK)
+                    acceptedPlans++;
+                else if (response.StatusCode == HttpStatusCode.TooManyRequests)
+                    rateLimited = true;
+                else
+                    throw new InvalidOperationException("The planner HTTP rate-limit check returned an unexpected status.");
+            }
+            Console.WriteLine($"HTTP_SECURITY_STAGE=planner-rate-limit; accepted={acceptedPlans}; rejected={rateLimited}");
+            True(acceptedPlans > 0 && acceptedPlans <= 10);
+            True(rateLimited);
+        }
+        finally
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+                process.WaitForExit(5000);
+            }
+            Directory.Delete(root.FullName, recursive: true);
+        }
+
+        static StringContent JsonContent(string json) => new(json, System.Text.Encoding.UTF8, "application/json");
     }
 
     public static void TemporaryStoreLocationsFailClosed()
