@@ -1,0 +1,70 @@
+name: Manually deploy LetsCarpool to Azure
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_app_name:
+        description: Type letscarpool to confirm the target App Service
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    uses: ./.github/workflows/azure-build.yml
+
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event.inputs.confirm_app_name == 'letscarpool'
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check deployment readiness and immutable target
+        env:
+          DEPLOYMENT_ENABLED: ${{ vars.AZURE_DEPLOYMENT_ENABLED }}
+          APP_NAME: ${{ vars.AZURE_WEBAPP_NAME }}
+          APP_HOSTNAME: ${{ vars.AZURE_WEBAPP_HOSTNAME }}
+          CONFIRMED_APP_NAME: ${{ inputs.confirm_app_name }}
+        run: |
+          set -euo pipefail
+          test "$DEPLOYMENT_ENABLED" = "true" || { echo "Deployment remains disabled; complete external setup and QA, then set production environment variable AZURE_DEPLOYMENT_ENABLED=true." >&2; exit 1; }
+          test "$APP_NAME" = "letscarpool" || { echo "AZURE_WEBAPP_NAME must be letscarpool." >&2; exit 1; }
+          test "$APP_HOSTNAME" = "letscarpool-bucxd2amgfc5aadu.westus2-01.azurewebsites.net" || { echo "AZURE_WEBAPP_HOSTNAME does not match the approved App Service host." >&2; exit 1; }
+          test "$CONFIRMED_APP_NAME" = "$APP_NAME" || { echo "The manual target confirmation does not match AZURE_WEBAPP_NAME." >&2; exit 1; }
+
+      - uses: actions/download-artifact@v8 # Node 24; GitHub-hosted runner meets the v2.327.1 minimum.
+        with:
+          name: letscarpool-appservice
+          path: ${{ runner.temp }}/artifact
+
+      - name: Validate downloaded artifact
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/artifact/letscarpool-appservice.zip"
+          test -s "$archive"
+          for required_path in LetsCarpool.Server.dll LetsCarpool.Server.runtimeconfig.json wwwroot/index.html; do
+            if ! unzip -Z1 "$archive" | grep -Fqx "$required_path"; then
+              echo "Downloaded artifact is missing required path: $required_path" >&2
+              exit 1
+            fi
+          done
+          if ! unzip -Z1 "$archive" | grep -Eq '^wwwroot/assets/[^/]+$'; then
+            echo "Downloaded artifact is missing required path: wwwroot/assets/*" >&2
+            exit 1
+          fi
+
+      - uses: azure/login@v3 # This action's current v3 manifest uses Node 24.
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: azure/webapps-deploy@v3 # This action's current v3 manifest uses Node 24.
+        with:
+          app-name: ${{ vars.AZURE_WEBAPP_NAME }}
+          package: ${{ runner.temp }}/artifact/letscarpool-appservice.zip

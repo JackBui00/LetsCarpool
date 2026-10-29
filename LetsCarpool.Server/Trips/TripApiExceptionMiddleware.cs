@@ -51,6 +51,15 @@ internal sealed class TripApiExceptionMiddleware(RequestDelegate next)
                 Status = StatusCodes.Status422UnprocessableEntity
             });
         }
+        catch (TripStoreUnavailableException) when (context.Request.Path.StartsWithSegments("/api/v1/trips"))
+        {
+            await WriteProblemAsync(context, new ProblemDetails
+            {
+                Title = "Trip storage unavailable.",
+                Detail = "The configured trip store is unavailable or not initialized. No local JSON fallback was attempted.",
+                Status = StatusCodes.Status503ServiceUnavailable
+            });
+        }
         catch (Exception) when (context.Request.Path.StartsWithSegments("/api/v1/trips"))
         {
             await WriteProblemAsync(context, new ProblemDetails
