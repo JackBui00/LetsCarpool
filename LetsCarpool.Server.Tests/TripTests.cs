@@ -275,7 +275,9 @@ internal static class TripTests
 
     public static void LegacyStoreFailsClosed()
     {
-        var path = Path.Combine(Path.GetTempPath(), "letscarpool-legacy-store-" + Guid.NewGuid().ToString("N") + ".json");
+        var root = Path.Combine(Path.GetTempPath(), "letscarpool-legacy-store-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var path = Path.Combine(root, "trips.json");
         const string legacy = "{\"schemaVersion\":1,\"trips\":[]}";
         try
         {
@@ -285,7 +287,7 @@ internal static class TripTests
         }
         finally
         {
-            if (File.Exists(path)) File.Delete(path);
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
         }
     }
 
@@ -293,7 +295,9 @@ internal static class TripTests
     {
         using var fixture = new Fixture();
         fixture.Service.CreateAsync(fixture.CreateRequest(), CancellationToken.None).GetAwaiter().GetResult();
-        var path = Path.Combine(Path.GetTempPath(), "letscarpool-temporary-store-" + Guid.NewGuid().ToString("N") + ".json");
+        var root = Path.Combine(Path.GetTempPath(), "letscarpool-temporary-store-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var path = Path.Combine(root, "trips.json");
         var temporary = File.ReadAllText(fixture.StorePath).Replace("\"provenance\":\"userProvided\"", "\"provenance\":\"mapboxSearchBoxTemporary\"", StringComparison.Ordinal);
         try
         {
@@ -303,7 +307,7 @@ internal static class TripTests
         }
         finally
         {
-            if (File.Exists(path)) File.Delete(path);
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
         }
     }
 

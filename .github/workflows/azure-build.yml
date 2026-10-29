@@ -1,0 +1,323 @@
+name: Build and verify Azure artifact
+
+on:
+  push:
+    branches: [main, dev, qa, 'feature/**']
+  pull_request:
+    branches: [dev, qa, main]
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build, test, and package (required SQL Server integration)
+    runs-on: ubuntu-latest
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: Y
+          MSSQL_PID: Developer
+          MSSQL_SA_PASSWORD: ${{ format('LetCarpool_CI_{0}_{1}_Abc!9', github.run_id, github.run_attempt) }}
+        options: --publish 127.0.0.1:1433:1433
+    steps:
+      - uses: actions/checkout@v7 # Node 24; GitHub-hosted runner meets the v2.327.1 minimum.
+
+      - uses: actions/setup-dotnet@v6 # Node 24; GitHub-hosted runner meets the v2.327.1 minimum.
+        with:
+          global-json-file: global.json
+
+      - uses: actions/setup-node@v7 # Node 24; GitHub-hosted runner meets the v2.327.1 minimum.
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: letscarpool.client/package-lock.json
+
+      - name: Restore and verify client
+        working-directory: letscarpool.client
+        env:
+          VITE_MAPBOX_ACCESS_TOKEN: ${{ vars.VITE_MAPBOX_ACCESS_TOKEN }}
+        run: |
+          npm ci
+          node --experimental-strip-types --test tests/*.test.mjs
+          npm run lint
+          npm run build
+
+      - name: Restore and build server
+        run: |
+          dotnet restore LetsCarpool.sln
+          dotnet build LetsCarpool.sln --configuration Release --no-restore
+
+      - name: Prepare isolated SQL integration database
+        shell: bash
+        env:
+          SQL_CI_PASSWORD: ${{ format('LetCarpool_CI_{0}_{1}_Abc!9', github.run_id, github.run_attempt) }}
+          SQL_CONTAINER_ID: ${{ job.services.sqlserver.id }}
+        run: |
+          set -euo pipefail
+          set +x
+          echo "::add-mask::$SQL_CI_PASSWORD"
+          test -n "$SQL_CONTAINER_ID"
+          database="LetsCarpoolTest_$(python3 -c 'import uuid; print(uuid.uuid4().hex)')"
+          printf 'LETS_CARPOOL_CI_SQL_DATABASE=%s\n' "$database" >> "$GITHUB_ENV"
+          export SQLCMDPASSWORD="$SQL_CI_PASSWORD"
+          sqlcmd_path=/opt/mssql-tools18/bin/sqlcmd
+          ready=false
+          for attempt in $(seq 1 60); do
+            if docker exec --env SQLCMDPASSWORD "$SQL_CONTAINER_ID" "$sqlcmd_path" -S localhost,1433 -U sa -C -b -Q 'SELECT 1' >/dev/null 2>&1; then
+              ready=true
+              break
+            fi
+            sleep 2
+          done
+          test "$ready" = true || { echo "Disposable SQL Server did not become ready." >&2; exit 1; }
+          docker exec --env SQLCMDPASSWORD "$SQL_CONTAINER_ID" "$sqlcmd_path" -S localhost,1433 -U sa -C -b -Q "CREATE DATABASE [$database]"
+          sed '/^:setvar ExpectedDatabase /d' \
+            LetsCarpool.Server/Trips/Sql/001_create_trip_store.sql > "$RUNNER_TEMP/001_create_trip_store.sql"
+          docker cp "$RUNNER_TEMP/001_create_trip_store.sql" "$SQL_CONTAINER_ID:/tmp/001_create_trip_store.sql"
+          docker exec --env SQLCMDPASSWORD "$SQL_CONTAINER_ID" "$sqlcmd_path" \
+            -S localhost,1433 -U sa -C -b -d "$database" -v ExpectedDatabase="$database" -i /tmp/001_create_trip_store.sql
+
+      - name: Verify strict SQL rejection controls
+        shell: bash
+        env:
+          SQL_CI_PASSWORD: ${{ format('LetCarpool_CI_{0}_{1}_Abc!9', github.run_id, github.run_attempt) }}
+        run: |
+          set -euo pipefail
+          set +x
+          echo "::add-mask::$SQL_CI_PASSWORD"
+          database="${LETS_CARPOOL_CI_SQL_DATABASE:?Missing unique SQL integration database.}"
+          report_safe_launch_diagnostics() {
+            local label="$1"
+            local child_exit_code="$2"
+            local output="$3"
+            local diagnostic_class=expectedmarkerabsent
+            local project_file=LetsCarpool.Server.Tests/LetsCarpool.Server.Tests.csproj
+            local project_present=no
+            local target_framework=unknown
+            local expected_assembly_present=no
+            local sdk_version=unavailable
+            local runtime_versions=none
+            local sql_fail_marker_present=no
+            local sql_fail_type=none
+            local sql_skip_marker_present=no
+            local focused_marker_present=no
+            local focused_marker_status=not_started
+            local focused_check_count=0
+            local safe_focused_marker_present=no
+            local unhandled_exception_present=no
+            local sql_fail_line
+            local safe_focused_failure_types=none
+            local safe_focused_failure_frames=none
+            local safe_focused_marker_count=0
+            local safe_focused_failure_line
+            local safe_focused_failure_regex='^FOCUSED_TEST_RESULT=FAIL; ?types=[A-Za-z0-9_.$+`-]+([>,][A-Za-z0-9_.$+`-]+){0,4}; ?frames=(none|[A-Za-z0-9_.$+<>|`-]+(,[A-Za-z0-9_.$+<>|`-]+){0,4})?$'
+            if [[ ! -f "$project_file" ]]; then
+              diagnostic_class=projectmissing
+            else
+              project_present=yes
+              target_framework="$(sed -nE 's/.*<TargetFramework>([^<]+)<\/TargetFramework>.*/\1/p' "$project_file" | head -n 1)"
+              if [[ "$target_framework" =~ ^[A-Za-z0-9._-]+$ ]]; then
+                local expected_assembly="LetsCarpool.Server.Tests/bin/Release/$target_framework/LetsCarpool.Server.Tests.dll"
+                if [[ -s "$expected_assembly" ]]; then
+                  expected_assembly_present=yes
+                else
+                  diagnostic_class=assemblymissing
+                fi
+              else
+                target_framework=unknown
+              fi
+            fi
+            if grep -Eiq 'You must install or update \.NET|framework .* was not found|Microsoft\.NETCore\.App.*not found|NETSDK[0-9]+.*framework' <<< "$output"; then
+              diagnostic_class=frameworkmissing
+            elif grep -Eiq 'Project file .* does not exist|Could not find a project|No project was found|MSB1009.*Project file does not exist' <<< "$output"; then
+              diagnostic_class=projectmissing
+            elif grep -Eiq 'application to execute does not exist|Could not execute because .*\.dll|assembly .* not found|failed to load .*assembly' <<< "$output"; then
+              diagnostic_class=assemblymissing
+            elif grep -Eiq 'dotnet: command not found|failed to launch|permission denied|exec format error|A fatal error occurred' <<< "$output"; then
+              diagnostic_class=hostlaunchfailure
+            elif grep -Eiq 'Unhandled exception|Unhandled error' <<< "$output"; then
+              diagnostic_class=unhandledexception
+            fi
+            if sql_fail_line="$(grep -E -m 1 '^SQL_INTEGRATION_RESULT=FAIL; reason=[A-Za-z0-9_.]+$' <<< "$output" || true)" && [[ -n "$sql_fail_line" ]]; then
+              sql_fail_marker_present=yes
+              sql_fail_type="${sql_fail_line#SQL_INTEGRATION_RESULT=FAIL; reason=}"
+            fi
+            if grep -Eq '^SQL_INTEGRATION_RESULT=SKIP(;|$)' <<< "$output"; then
+              sql_skip_marker_present=yes
+            fi
+            if grep -Eq '^FOCUSED_TESTS_PASSED=[0-9]+$' <<< "$output"; then
+              focused_marker_present=yes
+              focused_check_count="$(grep -Eo '^FOCUSED_TESTS_PASSED=[0-9]+$' <<< "$output" | tail -n 1 | cut -d= -f2)"
+              focused_marker_status="complete:${focused_check_count}"
+            else
+              focused_check_count="$(grep -Ec '^PASS ' <<< "$output" || true)"
+              if [[ "$focused_check_count" -gt 0 ]]; then
+                focused_marker_status="partial:${focused_check_count}"
+              fi
+            fi
+            if grep -Eiq 'Unhandled exception|Unhandled error' <<< "$output"; then
+              unhandled_exception_present=yes
+            fi
+            safe_focused_marker_count="$(grep -Ec '^FOCUSED_TEST_RESULT=FAIL;' <<< "$output" || true)"
+            if [[ "$safe_focused_marker_count" -eq 1 ]]; then
+              safe_focused_failure_line="$(grep -E '^FOCUSED_TEST_RESULT=FAIL;' <<< "$output" | head -n 1)"
+              if [[ "${#safe_focused_failure_line}" -le 1024 && "$safe_focused_failure_line" =~ $safe_focused_failure_regex ]]; then
+                safe_focused_marker_present=yes
+                safe_focused_failure_types="${safe_focused_failure_line#*types=}"
+                safe_focused_failure_types="${safe_focused_failure_types%%;*}"
+                safe_focused_failure_frames="${safe_focused_failure_line##*frames=}"
+                safe_focused_failure_frames="${safe_focused_failure_frames:-none}"
+                diagnostic_class=focusedcheckfailure
+              fi
+            fi
+            sdk_version="$(dotnet --version 2>/dev/null || true)"
+            if [[ ! "$sdk_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]]; then
+              sdk_version=unavailable
+            fi
+            runtime_versions="$(dotnet --list-runtimes 2>/dev/null | awk '$1 == "Microsoft.NETCore.App" && $2 ~ /^[0-9.]+$/ { if (count++ < 3) print $2 }' | paste -sd ',' - || true)"
+            runtime_versions="${runtime_versions:-none}"
+            printf 'Strict SQL negative control failed: case=%s child_exit=%s diagnostic=%s\n' "$label" "$child_exit_code" "$diagnostic_class" >&2
+            printf 'Safe launch metadata: working_directory=%s project=%s project_present=%s target_framework=%s expected_assembly_present=%s sdk=%s runtimes=%s command=dotnet_run_Release_no_build_no_restore\n' \
+              "$PWD" "$project_file" "$project_present" "$target_framework" "$expected_assembly_present" "$sdk_version" "$runtime_versions" >&2
+            printf 'Safe output markers: sql_fail_marker=%s sql_fail_type=%s sql_skip_marker=%s focused_marker=%s unhandled_exception=%s\n' \
+              "$sql_fail_marker_present" "$sql_fail_type" "$sql_skip_marker_present" "$focused_marker_present" "$unhandled_exception_present" >&2
+            printf 'Safe focused status: marker=%s checks=%s status=%s\n' \
+              "$focused_marker_present" "$focused_check_count" "$focused_marker_status" >&2
+            printf 'Safe focused failure marker: present=%s count=%s types=%s frames=%s\n' \
+              "$safe_focused_marker_present" "$safe_focused_marker_count" "$safe_focused_failure_types" "$safe_focused_failure_frames" >&2
+          }
+          run_expected_rejection() {
+            local label="$1"
+            local target="$2"
+            local expected_failure="$3"
+            local output
+            local child_exit_code=0
+            output="$(
+              (
+                export LETS_CARPOOL_RUN_SQL_INTEGRATION=true
+                case "$target" in
+                  missing-connection)
+                    unset LETS_CARPOOL_TEST_SQL_CONNECTION
+                    ;;
+                  non-loopback-host)
+                    export LETS_CARPOOL_TEST_SQL_CONNECTION="Server=nonloopback.invalid,1433;Initial Catalog=$database;Encrypt=True;TrustServerCertificate=True;User ID=sa;Password=$SQL_CI_PASSWORD;Connect Timeout=1"
+                    ;;
+                  malformed-test-database)
+                    export LETS_CARPOOL_TEST_SQL_CONNECTION="Server=localhost,1433;Initial Catalog=LetsCarpoolTest_invalid;Encrypt=True;TrustServerCertificate=True;User ID=sa;Password=$SQL_CI_PASSWORD;Connect Timeout=1"
+                    ;;
+                  unavailable-loopback-service)
+                    export LETS_CARPOOL_TEST_SQL_CONNECTION="Server=localhost,1434;Initial Catalog=$database;Encrypt=True;TrustServerCertificate=True;User ID=sa;Password=$SQL_CI_PASSWORD;Connect Timeout=1"
+                    ;;
+                  *)
+                    echo "Unknown strict SQL negative control." >&2
+                    exit 1
+                    ;;
+                esac
+                dotnet run --project LetsCarpool.Server.Tests --configuration Release --no-build --no-restore
+              ) 2>&1
+            )" || child_exit_code=$?
+            if [[ "$child_exit_code" -eq 0 ]]; then
+              echo "Strict SQL negative control unexpectedly succeeded: $label" >&2
+              report_safe_launch_diagnostics "$label" "$child_exit_code" "$output"
+              return 1
+            fi
+            if ! grep -Fxq "$expected_failure" <<< "$output"; then
+              report_safe_launch_diagnostics "$label" "$child_exit_code" "$output"
+              return "$child_exit_code"
+            fi
+          }
+          run_expected_rejection missing-connection missing-connection 'SQL_INTEGRATION_RESULT=FAIL; reason=InvalidOperationException'
+          run_expected_rejection non-loopback-host non-loopback-host 'SQL_INTEGRATION_RESULT=FAIL; reason=InvalidOperationException'
+          run_expected_rejection malformed-test-database malformed-test-database 'SQL_INTEGRATION_RESULT=FAIL; reason=InvalidOperationException'
+          run_expected_rejection unavailable-loopback-service unavailable-loopback-service 'SQL_INTEGRATION_RESULT=FAIL; reason=InvalidOperationException'
+
+      - name: Run server checks and required SQL integration
+        shell: bash
+        env:
+          SQL_CI_PASSWORD: ${{ format('LetCarpool_CI_{0}_{1}_Abc!9', github.run_id, github.run_attempt) }}
+        run: |
+          set -euo pipefail
+          set +x
+          echo "::add-mask::$SQL_CI_PASSWORD"
+          database="${LETS_CARPOOL_CI_SQL_DATABASE:?Missing unique SQL integration database.}"
+          if ! test_output="$(
+            LETS_CARPOOL_RUN_SQL_INTEGRATION=true \
+            LETS_CARPOOL_TEST_SQL_CONNECTION="Server=localhost,1433;Initial Catalog=$database;Encrypt=True;TrustServerCertificate=True;User ID=sa;Password=$SQL_CI_PASSWORD;Connect Timeout=15;Pooling=False" \
+            dotnet run --project LetsCarpool.Server.Tests --configuration Release --no-build --no-restore 2>&1
+          )"; then
+            printf '%s\n' "$test_output"
+            exit 1
+          fi
+          printf '%s\n' "$test_output"
+          focused_line="$(printf '%s\n' "$test_output" | grep -E '^FOCUSED_TESTS_PASSED=[0-9]+$' || true)"
+          [[ "$focused_line" =~ ^FOCUSED_TESTS_PASSED=([0-9]+)$ ]] || { echo "Focused server checks did not report their completion count." >&2; exit 1; }
+          test "${BASH_REMATCH[1]}" -ge 21 || { echo "Expected at least 21 focused server checks to pass." >&2; exit 1; }
+          sql_result_count="$(printf '%s\n' "$test_output" | grep -c -E '^SQL_INTEGRATION_RESULT=' || true)"
+          test "$sql_result_count" = 1 || { echo "Expected exactly one SQL integration result." >&2; exit 1; }
+          sql_line="$(printf '%s\n' "$test_output" | grep -E '^SQL_INTEGRATION_RESULT=')"
+          [[ "$sql_line" =~ ^SQL_INTEGRATION_RESULT=PASS\;\ cases=1\;\ assertions=([0-9]+)$ ]] || { echo "SQL integration did not report one passing case with assertions." >&2; exit 1; }
+          test "${BASH_REMATCH[1]}" -ge 33 || { echo "SQL integration reported fewer than 33 expected scenario assertions." >&2; exit 1; }
+          scenario_result_count="$(printf '%s\n' "$test_output" | grep -c -E '^SQL_INTEGRATION_SCENARIOS=' || true)"
+          test "$scenario_result_count" = 1 || { echo "Expected exactly one SQL scenario coverage list." >&2; exit 1; }
+          scenario_line="$(printf '%s\n' "$test_output" | grep -E '^SQL_INTEGRATION_SCENARIOS=')"
+          expected_scenarios='SQL_INTEGRATION_SCENARIOS=concurrent_same_key_replay_across_stores,rollback_after_mutation_fresh_store_read,capability_rotation_revoke_expiry_persisted_state,unavailable_database_fail_closed_no_json_fallback'
+          test "$scenario_line" = "$expected_scenarios" || { echo "SQL integration did not report the required scenario coverage." >&2; exit 1; }
+          restart_line="$(printf '%s\n' "$test_output" | grep -E '^SQL_PROCESS_RESTART_TESTED=' || true)"
+          test "$restart_line" = 'SQL_PROCESS_RESTART_TESTED=false' || { echo "Expected explicit disclosure that process restart coverage is unverified." >&2; exit 1; }
+
+      - name: Clean up disposable SQL database
+        if: always()
+        continue-on-error: true
+        shell: bash
+        env:
+          SQL_CI_PASSWORD: ${{ format('LetCarpool_CI_{0}_{1}_Abc!9', github.run_id, github.run_attempt) }}
+          SQL_CONTAINER_ID: ${{ job.services.sqlserver.id }}
+        run: |
+          set -euo pipefail
+          set +x
+          echo "::add-mask::$SQL_CI_PASSWORD"
+          SQL_TEST_DATABASE="${LETS_CARPOOL_CI_SQL_DATABASE:-}"
+          if [[ -z "$SQL_CONTAINER_ID" || ! "$SQL_TEST_DATABASE" =~ ^LetsCarpoolTest_[0-9a-f]{32}$ ]]; then
+            exit 0
+          fi
+          export SQLCMDPASSWORD="$SQL_CI_PASSWORD"
+          if ! docker exec --env SQLCMDPASSWORD "$SQL_CONTAINER_ID" /opt/mssql-tools18/bin/sqlcmd \
+            -S localhost,1433 -U sa -C -b \
+            -Q "IF DB_ID(N'$SQL_TEST_DATABASE') IS NOT NULL BEGIN ALTER DATABASE [$SQL_TEST_DATABASE] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [$SQL_TEST_DATABASE]; END" \
+            >/dev/null 2>&1; then
+            echo "::warning::Could not explicitly drop the disposable SQL test database; the ephemeral service is removed at job end."
+          fi
+
+      - name: Publish API and colocated React app
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p LetsCarpool.Server/wwwroot
+          cp -a letscarpool.client/dist/. LetsCarpool.Server/wwwroot/
+          dotnet publish LetsCarpool.Server/LetsCarpool.Server.csproj \
+            --configuration Release --no-restore --output "$RUNNER_TEMP/publish" \
+            -p:UseAppHost=false -p:ShouldRunNpmInstall=false \
+            "-p:BuildCommand=echo Client assets are prebuilt"
+          for required_file in LetsCarpool.Server.dll LetsCarpool.Server.runtimeconfig.json wwwroot/index.html; do
+            if [[ ! -s "$RUNNER_TEMP/publish/$required_file" ]]; then
+              echo "Publish artifact is missing required file: $required_file" >&2
+              exit 1
+            fi
+          done
+          if ! find "$RUNNER_TEMP/publish/wwwroot/assets" -maxdepth 1 -type f -print -quit | grep -q .; then
+            echo "Publish artifact is missing required files: wwwroot/assets/*" >&2
+            exit 1
+          fi
+          cd "$RUNNER_TEMP/publish"
+          zip -qr "$RUNNER_TEMP/letscarpool-appservice.zip" .
+          unzip -l "$RUNNER_TEMP/letscarpool-appservice.zip"
+
+      - uses: actions/upload-artifact@v7 # Node 24; GitHub-hosted runner meets the v2.327.1 minimum.
+        with:
+          name: letscarpool-appservice
+          path: ${{ runner.temp }}/letscarpool-appservice.zip
+          if-no-files-found: error
+          retention-days: 14
