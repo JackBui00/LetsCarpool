@@ -47,9 +47,16 @@ jobs:
           set -euo pipefail
           archive="$RUNNER_TEMP/artifact/letscarpool-appservice.zip"
           test -s "$archive"
-          unzip -Z1 "$archive" | grep -qx 'index.html'
-          unzip -Z1 "$archive" | grep -q '^assets/[^/]*$'
-          unzip -Z1 "$archive" | grep -qx 'LetsCarpool.Server.dll'
+          for required_path in LetsCarpool.Server.dll LetsCarpool.Server.runtimeconfig.json wwwroot/index.html; do
+            if ! unzip -Z1 "$archive" | grep -Fqx "$required_path"; then
+              echo "Downloaded artifact is missing required path: $required_path" >&2
+              exit 1
+            fi
+          done
+          if ! unzip -Z1 "$archive" | grep -Eq '^wwwroot/assets/[^/]+$'; then
+            echo "Downloaded artifact is missing required path: wwwroot/assets/*" >&2
+            exit 1
+          fi
 
       - uses: azure/login@v3 # This action's current v3 manifest uses Node 24.
         with:
