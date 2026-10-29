@@ -301,9 +301,16 @@ jobs:
             --configuration Release --no-restore --output "$RUNNER_TEMP/publish" \
             -p:UseAppHost=false -p:ShouldRunNpmInstall=false \
             "-p:BuildCommand=echo Client assets are prebuilt"
-          test -s "$RUNNER_TEMP/publish/index.html"
-          test -n "$(find "$RUNNER_TEMP/publish/assets" -maxdepth 1 -type f -print -quit)"
-          test -f "$RUNNER_TEMP/publish/LetsCarpool.Server.dll"
+          for required_file in LetsCarpool.Server.dll LetsCarpool.Server.runtimeconfig.json wwwroot/index.html; do
+            if [[ ! -s "$RUNNER_TEMP/publish/$required_file" ]]; then
+              echo "Publish artifact is missing required file: $required_file" >&2
+              exit 1
+            fi
+          done
+          if ! find "$RUNNER_TEMP/publish/wwwroot/assets" -maxdepth 1 -type f -print -quit | grep -q .; then
+            echo "Publish artifact is missing required files: wwwroot/assets/*" >&2
+            exit 1
+          fi
           cd "$RUNNER_TEMP/publish"
           zip -qr "$RUNNER_TEMP/letscarpool-appservice.zip" .
           unzip -l "$RUNNER_TEMP/letscarpool-appservice.zip"
