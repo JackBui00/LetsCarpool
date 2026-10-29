@@ -100,6 +100,12 @@ jobs:
             local expected_assembly_present=no
             local sdk_version=unavailable
             local runtime_versions=none
+            local sql_fail_marker_present=no
+            local sql_fail_type=none
+            local sql_skip_marker_present=no
+            local focused_marker_present=no
+            local unhandled_exception_present=no
+            local sql_fail_line
             if [[ ! -f "$project_file" ]]; then
               diagnostic_class=projectmissing
             else
@@ -124,6 +130,21 @@ jobs:
               diagnostic_class=assemblymissing
             elif grep -Eiq 'dotnet: command not found|failed to launch|permission denied|exec format error|A fatal error occurred' <<< "$output"; then
               diagnostic_class=hostlaunchfailure
+            elif grep -Eiq 'Unhandled exception|Unhandled error' <<< "$output"; then
+              diagnostic_class=unhandledexception
+            fi
+            if sql_fail_line="$(grep -E -m 1 '^SQL_INTEGRATION_RESULT=FAIL; reason=[A-Za-z0-9_.]+$' <<< "$output" || true)" && [[ -n "$sql_fail_line" ]]; then
+              sql_fail_marker_present=yes
+              sql_fail_type="${sql_fail_line#SQL_INTEGRATION_RESULT=FAIL; reason=}"
+            fi
+            if grep -Eq '^SQL_INTEGRATION_RESULT=SKIP(;|$)' <<< "$output"; then
+              sql_skip_marker_present=yes
+            fi
+            if grep -Eq '^FOCUSED_TESTS_PASSED=[0-9]+$' <<< "$output"; then
+              focused_marker_present=yes
+            fi
+            if grep -Eiq 'Unhandled exception|Unhandled error' <<< "$output"; then
+              unhandled_exception_present=yes
             fi
             sdk_version="$(dotnet --version 2>/dev/null || true)"
             if [[ ! "$sdk_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]]; then
@@ -134,6 +155,8 @@ jobs:
             printf 'Strict SQL negative control failed: case=%s child_exit=%s diagnostic=%s\n' "$label" "$child_exit_code" "$diagnostic_class" >&2
             printf 'Safe launch metadata: working_directory=%s project=%s project_present=%s target_framework=%s expected_assembly_present=%s sdk=%s runtimes=%s command=dotnet_run_Release_no_build_no_restore\n' \
               "$PWD" "$project_file" "$project_present" "$target_framework" "$expected_assembly_present" "$sdk_version" "$runtime_versions" >&2
+            printf 'Safe output markers: sql_fail_marker=%s sql_fail_type=%s sql_skip_marker=%s focused_marker=%s unhandled_exception=%s\n' \
+              "$sql_fail_marker_present" "$sql_fail_type" "$sql_skip_marker_present" "$focused_marker_present" "$unhandled_exception_present" >&2
           }
           run_expected_rejection() {
             local label="$1"
