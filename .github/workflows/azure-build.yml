@@ -113,7 +113,7 @@ jobs:
             local safe_focused_failure_frames=none
             local safe_focused_marker_count=0
             local safe_focused_failure_line
-            local safe_focused_failure_regex='^SAFE_FOCUSED_TEST_FAILURE;types=([A-Za-z0-9_.$+<>`,\[\]]+);frames=(none|[A-Za-z0-9_.$+<>|`-]+(,[A-Za-z0-9_.$+<>|`-]+){0,4})$'
+            local safe_focused_failure_regex='^FOCUSED_TEST_RESULT=FAIL; ?types=[A-Za-z0-9_.$+`-]+([>,][A-Za-z0-9_.$+`-]+){0,4}; ?frames=(none|[A-Za-z0-9_.$+<>|`-]+(,[A-Za-z0-9_.$+<>|`-]+){0,4})?$'
             if [[ ! -f "$project_file" ]]; then
               diagnostic_class=projectmissing
             else
@@ -161,13 +161,15 @@ jobs:
             if grep -Eiq 'Unhandled exception|Unhandled error' <<< "$output"; then
               unhandled_exception_present=yes
             fi
-            safe_focused_marker_count="$(grep -Ec '^SAFE_FOCUSED_TEST_FAILURE;' <<< "$output" || true)"
+            safe_focused_marker_count="$(grep -Ec '^FOCUSED_TEST_RESULT=FAIL;' <<< "$output" || true)"
             if [[ "$safe_focused_marker_count" -eq 1 ]]; then
-              safe_focused_failure_line="$(grep -E '^SAFE_FOCUSED_TEST_FAILURE;' <<< "$output" | head -n 1)"
+              safe_focused_failure_line="$(grep -E '^FOCUSED_TEST_RESULT=FAIL;' <<< "$output" | head -n 1)"
               if [[ "${#safe_focused_failure_line}" -le 1024 && "$safe_focused_failure_line" =~ $safe_focused_failure_regex ]]; then
                 safe_focused_marker_present=yes
-                safe_focused_failure_types="${BASH_REMATCH[1]}"
-                safe_focused_failure_frames="${BASH_REMATCH[2]}"
+                safe_focused_failure_types="${safe_focused_failure_line#*types=}"
+                safe_focused_failure_types="${safe_focused_failure_types%%;*}"
+                safe_focused_failure_frames="${safe_focused_failure_line##*frames=}"
+                safe_focused_failure_frames="${safe_focused_failure_frames:-none}"
                 diagnostic_class=focusedcheckfailure
               fi
             fi
