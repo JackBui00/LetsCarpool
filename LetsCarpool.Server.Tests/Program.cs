@@ -22,6 +22,8 @@ var checks = new (string Name, Action Run)[]
     ("trip and join request validation", TripTests.TripAndJoinValidation),
     ("trip location provenance validation and persistence", TripTests.LocationProvenanceValidationAndPersistence),
     ("legacy trip store fails closed without mutation", TripTests.LegacyStoreFailsClosed),
+    ("json store secures only newly created directories", TripTests.JsonStoreDirectoryPermissions),
+    ("anonymous user routes are absent and planner HTTP limits apply", TripTests.PublicApiHttpSecurityAndLimits),
     ("temporary provider results are never loaded from persistence", TripTests.TemporaryStoreLocationsFailClosed),
     ("trip API response shape serialization", TripTests.ResponseShapeSerialization),
     ("revision race during plan generation", TripTests.GenerationRevisionRace),

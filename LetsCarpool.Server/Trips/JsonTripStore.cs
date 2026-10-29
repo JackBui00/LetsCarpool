@@ -24,8 +24,14 @@ internal sealed class JsonTripStore : ITripStore
     internal JsonTripStore(string path)
     {
         filePath = Path.GetFullPath(path);
-        Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
-        RestrictDirectoryPermissions();
+        var directoryPath = Path.GetDirectoryName(filePath)!;
+        if (OperatingSystem.IsWindows())
+            Directory.CreateDirectory(directoryPath);
+        else
+        {
+            CreatePrivateStoreDirectory(directoryPath);
+            ValidateExistingStoreFile(filePath);
+        }
         if (File.Exists(filePath))
         {
             database = JsonSerializer.Deserialize<TripDatabase>(File.ReadAllBytes(filePath), JsonOptions)
@@ -93,6 +99,65 @@ internal sealed class JsonTripStore : ITripStore
         JsonSerializer.Deserialize<TripDatabase>(JsonSerializer.SerializeToUtf8Bytes(source, JsonOptions), JsonOptions)
         ?? throw new InvalidDataException("The local trip store could not be copied.");
 
+    private static void CreatePrivateStoreDirectory(string path)
+    {
+        if (OperatingSystem.IsWindows()) throw new PlatformNotSupportedException();
+
+        var fullPath = Path.GetFullPath(path);
+        ValidateExistingDirectoryAncestors(fullPath);
+        Directory.CreateDirectory(fullPath, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        ValidateExistingDirectoryAncestors(fullPath);
+    }
+
+    private static void ValidateExistingDirectoryAncestors(string directoryPath)
+    {
+        if (OperatingSystem.IsWindows()) throw new PlatformNotSupportedException();
+
+        var fullPath = Path.GetFullPath(directoryPath);
+        var targetExists = Directory.Exists(fullPath);
+        var current = fullPath;
+        while (!Directory.Exists(current))
+        {
+            current = Directory.GetParent(current)?.FullName
+                ?? throw new InvalidOperationException("The local trip store directory path is invalid.");
+        }
+
+        while (true)
+        {
+            var directory = new DirectoryInfo(current);
+            if (directory.LinkTarget is not null)
+                throw new InvalidOperationException("The local trip store path cannot contain symbolic-link directories.");
+
+            var mode = File.GetUnixFileMode(current);
+            var writableByOthers = (mode & (UnixFileMode.GroupWrite | UnixFileMode.OtherWrite)) != 0;
+            var isTarget = targetExists && string.Equals(current, fullPath, StringComparison.Ordinal);
+            var accessibleByOthers = (mode & (UnixFileMode.GroupRead | UnixFileMode.GroupWrite | UnixFileMode.GroupExecute |
+                UnixFileMode.OtherRead | UnixFileMode.OtherWrite | UnixFileMode.OtherExecute)) != 0;
+            if ((isTarget && accessibleByOthers) || (!isTarget && writableByOthers && (mode & UnixFileMode.StickyBit) == 0))
+                throw new InvalidOperationException("The local trip store path cannot use directories accessible or writable by other users.");
+
+            var parent = Directory.GetParent(current);
+            if (parent is null) break;
+            current = parent.FullName;
+        }
+    }
+
+    private static void ValidateExistingStoreFile(string path)
+    {
+        if (OperatingSystem.IsWindows()) throw new PlatformNotSupportedException();
+
+        var file = new FileInfo(path);
+        if (file.LinkTarget is not null)
+            throw new InvalidOperationException("The local trip store file cannot be a symbolic link.");
+        if (file.Exists)
+        {
+            var mode = File.GetUnixFileMode(path);
+            if ((mode & (UnixFileMode.GroupRead | UnixFileMode.GroupWrite | UnixFileMode.GroupExecute |
+                UnixFileMode.OtherRead | UnixFileMode.OtherWrite | UnixFileMode.OtherExecute)) != 0)
+                throw new InvalidOperationException("The local trip store file cannot be accessible by other users.");
+        }
+    }
+
     private async Task PersistAsync(TripDatabase changed, CancellationToken cancellationToken)
     {
         var temporaryPath = filePath + ".tmp-" + Guid.NewGuid().ToString("N");
@@ -112,12 +177,6 @@ internal sealed class JsonTripStore : ITripStore
         {
             if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
         }
-    }
-
-    private void RestrictDirectoryPermissions()
-    {
-        if (OperatingSystem.IsWindows()) return; // The user-profile/workspace directory's inherited ACL is the Windows boundary.
-        File.SetUnixFileMode(Path.GetDirectoryName(filePath)!, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
     }
 
     private static void RestrictFilePermissions(string path)
