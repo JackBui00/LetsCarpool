@@ -279,7 +279,7 @@ internal static class TripTests
     public static void LegacyStoreFailsClosed()
     {
         var root = Path.Combine(Path.GetTempPath(), "letscarpool-legacy-store-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(root);
+        CreateOwnedTestDirectory(root);
         var path = Path.Combine(root, "trips.json");
         const string legacy = "{\"schemaVersion\":1,\"trips\":[]}";
         try
@@ -298,11 +298,17 @@ internal static class TripTests
     {
         if (OperatingSystem.IsWindows()) return;
 
-        var root = Directory.CreateTempSubdirectory("letscarpool-permissions-");
+        var rootPath = Path.Combine(Path.GetTempPath(), "letscarpool-permissions-" + Guid.NewGuid().ToString("N"));
+        CreateOwnedTestDirectory(rootPath);
+        var root = new DirectoryInfo(rootPath);
         FileSystemInfo? link = null;
         FileSystemInfo? fileLink = null;
-        var sharedRoot = Directory.CreateTempSubdirectory("letscarpool-shared-permissions-");
-        var publicRoot = Directory.CreateTempSubdirectory("letscarpool-public-permissions-");
+        var sharedRootPath = Path.Combine(Path.GetTempPath(), "letscarpool-shared-permissions-" + Guid.NewGuid().ToString("N"));
+        CreateOwnedTestDirectory(sharedRootPath);
+        var sharedRoot = new DirectoryInfo(sharedRootPath);
+        var publicRootPath = Path.Combine(Path.GetTempPath(), "letscarpool-public-permissions-" + Guid.NewGuid().ToString("N"));
+        CreateOwnedTestDirectory(publicRootPath);
+        var publicRoot = new DirectoryInfo(publicRootPath);
         try
         {
             var originalMode = File.GetUnixFileMode(root.FullName);
@@ -382,7 +388,9 @@ internal static class TripTests
         var serverAssembly = Path.Combine(AppContext.BaseDirectory, "LetsCarpool.Server.dll");
         True(File.Exists(serverAssembly));
 
-        var root = Directory.CreateTempSubdirectory("letscarpool-http-security-");
+        var rootPath = Path.Combine(Path.GetTempPath(), "letscarpool-http-security-" + Guid.NewGuid().ToString("N"));
+        CreateOwnedTestDirectory(rootPath);
+        var root = new DirectoryInfo(rootPath);
         using var portReservation = new TcpListener(IPAddress.Loopback, 0);
         portReservation.Start();
         var port = ((IPEndPoint)portReservation.LocalEndpoint).Port;
@@ -521,7 +529,7 @@ internal static class TripTests
         using var fixture = new Fixture();
         fixture.Service.CreateAsync(fixture.CreateRequest(), CancellationToken.None).GetAwaiter().GetResult();
         var root = Path.Combine(Path.GetTempPath(), "letscarpool-temporary-store-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(root);
+        CreateOwnedTestDirectory(root);
         var path = Path.Combine(root, "trips.json");
         var temporary = File.ReadAllText(fixture.StorePath).Replace("\"provenance\":\"userProvided\"", "\"provenance\":\"mapboxSearchBoxTemporary\"", StringComparison.Ordinal);
         try
@@ -583,7 +591,7 @@ internal static class TripTests
         public Fixture(bool allowPermanentStorage = false)
         {
             this.allowPermanentStorage = allowPermanentStorage;
-            Directory.CreateDirectory(root);
+            CreateOwnedTestDirectory(root);
             store = new JsonTripStore(StorePath);
         }
 
@@ -649,6 +657,20 @@ internal static class TripTests
             }
             return new HaversineDistanceProvider().Estimate(from, to);
         }
+    }
+
+    private static void CreateOwnedTestDirectory(string path)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Directory.CreateDirectory(path);
+            return;
+        }
+
+        var privateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
+        Directory.CreateDirectory(path, privateMode);
+        if (File.GetUnixFileMode(path) != privateMode)
+            throw new InvalidOperationException("The test fixture directory was not created with private permissions.");
     }
 
     private static void ThrowsStatus(int status, Action action)
