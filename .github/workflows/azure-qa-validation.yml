@@ -130,7 +130,7 @@ jobs:
                   parsed_actual = urlparse(response.geturl())
                   valid_target = parsed_actual.scheme == "https" and parsed_actual.hostname == parsed_expected.hostname
                   has_title = b"<title>Gather \xc2\xb7 Plan a ride together</title>" in body
-                  has_root = b"<div id=root></div>" in body
+                  has_root = b'<div id="root"></div>' in body
                   has_app_bundle = re.search(rb'<script\b[^>]*\bsrc="/assets/index-[^" ]+\.js"', body) is not None
                   valid_body = len(body) <= 65536 and has_title and has_root and has_app_bundle
                   if response.status == 200 and valid_target and valid_body:
