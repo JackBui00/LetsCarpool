@@ -266,8 +266,8 @@ static string SafeExceptionTypes(Exception exception)
 {
     var types = new List<string>();
     for (var current = exception; current is not null && types.Count < 5; current = current.InnerException)
-        types.Add(SafeIdentifier(current.GetType().FullName ?? current.GetType().Name));
-    return string.Join("|", types);
+        types.Add(SafeExceptionType(current.GetType().FullName ?? current.GetType().Name));
+    return string.Join(">", types);
 }
 
 static string SafeFrameIdentifiers(Exception exception)
@@ -277,9 +277,13 @@ static string SafeFrameIdentifiers(Exception exception)
         .Select(frame => frame.GetMethod())
         .Where(method => method is not null)
         .Take(5)
-        .Select(method => SafeIdentifier($"{method!.DeclaringType?.FullName ?? "UnknownType"}.{method.Name}")));
+        .Select(method => SafeFrameIdentifier($"{method!.DeclaringType?.FullName ?? "UnknownType"}.{method.Name}")));
 }
 
-static string SafeIdentifier(string value) => new(value
-    .Select(character => char.IsAsciiLetterOrDigit(character) || "._+$`<>".Contains(character) ? character : '_')
+static string SafeExceptionType(string value) => new(value
+    .Select(character => char.IsAsciiLetterOrDigit(character) || "._+$`-".Contains(character) ? character : '_')
+    .ToArray());
+
+static string SafeFrameIdentifier(string value) => new(value
+    .Select(character => char.IsAsciiLetterOrDigit(character) || "._+$`<>-".Contains(character) ? character : '_')
     .ToArray());
