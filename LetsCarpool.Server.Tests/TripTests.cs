@@ -284,7 +284,7 @@ internal static class TripTests
         const string legacy = "{\"schemaVersion\":1,\"trips\":[]}";
         try
         {
-            File.WriteAllText(path, legacy);
+            WritePrivateTestFile(path, legacy);
             Throws<InvalidDataException>(() => new JsonTripStore(path));
             Equal(legacy, File.ReadAllText(path));
         }
@@ -534,7 +534,7 @@ internal static class TripTests
         var temporary = File.ReadAllText(fixture.StorePath).Replace("\"provenance\":\"userProvided\"", "\"provenance\":\"mapboxSearchBoxTemporary\"", StringComparison.Ordinal);
         try
         {
-            File.WriteAllText(path, temporary);
+            WritePrivateTestFile(path, temporary);
             Throws<InvalidDataException>(() => new JsonTripStore(path));
             Equal(temporary, File.ReadAllText(path));
         }
@@ -671,6 +671,26 @@ internal static class TripTests
         Directory.CreateDirectory(path, privateMode);
         if (File.GetUnixFileMode(path) != privateMode)
             throw new InvalidOperationException("The test fixture directory was not created with private permissions.");
+    }
+
+    private static void WritePrivateTestFile(string path, string contents)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            File.WriteAllText(path, contents);
+            return;
+        }
+
+        var options = new FileStreamOptions
+        {
+            Mode = FileMode.CreateNew,
+            Access = FileAccess.Write,
+            Share = FileShare.None,
+            UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite
+        };
+        using var stream = new FileStream(path, options);
+        var bytes = System.Text.Encoding.UTF8.GetBytes(contents);
+        stream.Write(bytes);
     }
 
     private static void ThrowsStatus(int status, Action action)
