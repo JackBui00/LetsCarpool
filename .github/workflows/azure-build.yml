@@ -104,8 +104,12 @@ jobs:
             local sql_fail_type=none
             local sql_skip_marker_present=no
             local focused_marker_present=no
+            local focused_marker_status=not_started
+            local focused_check_count=0
             local unhandled_exception_present=no
             local sql_fail_line
+            local exception_types=none
+            local stack_methods=none
             if [[ ! -f "$project_file" ]]; then
               diagnostic_class=projectmissing
             else
@@ -142,10 +146,26 @@ jobs:
             fi
             if grep -Eq '^FOCUSED_TESTS_PASSED=[0-9]+$' <<< "$output"; then
               focused_marker_present=yes
+              focused_check_count="$(grep -Eo '^FOCUSED_TESTS_PASSED=[0-9]+$' <<< "$output" | tail -n 1 | cut -d= -f2)"
+              focused_marker_status="complete:${focused_check_count}"
+            else
+              focused_check_count="$(grep -Ec '^PASS ' <<< "$output" || true)"
+              if [[ "$focused_check_count" -gt 0 ]]; then
+                focused_marker_status="partial:${focused_check_count}"
+              fi
             fi
             if grep -Eiq 'Unhandled exception|Unhandled error' <<< "$output"; then
               unhandled_exception_present=yes
             fi
+            exception_types="$(
+              {
+                grep -Eo 'Unhandled exception\. [A-Za-z0-9_.$+<>`-]+:' <<< "$output" | sed -E 's/^Unhandled exception\. //; s/:$//' | head -n 1 || true
+                grep -Eo -- '---> [A-Za-z0-9_.$+<>`-]+:' <<< "$output" | sed -E 's/^---> //; s/:$//' | head -n 5 || true
+              } | awk 'NF && !seen[$0]++' | head -n 6 | paste -sd '>' -
+            )"
+            exception_types="${exception_types:-none}"
+            stack_methods="$(grep -E '^[[:space:]]+at [A-Za-z0-9_.$+<>|`-]+\(' <<< "$output" | sed -E 's/^[[:space:]]+at ([A-Za-z0-9_.$+<>|`-]+)\(.*/\1/' | head -n 5 | paste -sd ',' - || true)"
+            stack_methods="${stack_methods:-none}"
             sdk_version="$(dotnet --version 2>/dev/null || true)"
             if [[ ! "$sdk_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]]; then
               sdk_version=unavailable
@@ -157,6 +177,8 @@ jobs:
               "$PWD" "$project_file" "$project_present" "$target_framework" "$expected_assembly_present" "$sdk_version" "$runtime_versions" >&2
             printf 'Safe output markers: sql_fail_marker=%s sql_fail_type=%s sql_skip_marker=%s focused_marker=%s unhandled_exception=%s\n' \
               "$sql_fail_marker_present" "$sql_fail_type" "$sql_skip_marker_present" "$focused_marker_present" "$unhandled_exception_present" >&2
+            printf 'Safe exception metadata: types=%s stack_methods=%s focused_status=%s focused_checks=%s\n' \
+              "$exception_types" "$stack_methods" "$focused_marker_status" "$focused_check_count" >&2
           }
           run_expected_rejection() {
             local label="$1"
